@@ -9,13 +9,20 @@ import numpy as np
 
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
-from bokeh.models import ColumnDataSource, Div, Select, Slider, TextInput, Button
+from bokeh.models import ColumnDataSource, Div, Select, Slider, Button
 from bokeh.plotting import figure
 
 from daskms.experimental.zarr import xds_from_zarr
 
 # TODO: Make programmatic + include concatenation when we have mutiple xdss.
 xds = xds_from_zarr("::B")[0]
+
+directory_contents = Path.cwd().glob("*")
+
+# import ipdb; ipdb.set_trace()
+
+# import xarray
+# xds = xarray.combine_by_coords(xds, combine_attrs="drop_conflicts")
 
 gains = xds[["gains", "gain_flags"]].to_dataframe().reset_index()
 
@@ -36,6 +43,11 @@ axis_map = {
 desc = Div(text=(Path(__file__).parent / "description.html").read_text("utf8"), sizing_mode="stretch_width")
 
 # Create Input controls
+directories = Select(
+    title="Gain",
+    options=[str(p) for p in directory_contents],
+    value="::G"
+)
 frequency_lower = Slider(
     title="Frequency (Min)",
     value=gains.gain_freq.min(),
@@ -144,6 +156,7 @@ def flagdata():
 flag_button.on_click(flagdata)
 
 controls = [
+    directories,
     antenna,
     correlation,
     x_axis,
