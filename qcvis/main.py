@@ -16,11 +16,14 @@ from bokeh.plotting import figure
 import holoviews as hv
 from holoviews import opts, streams
 from holoviews.operation.datashader import datashade, rasterize, shade, dynspread, spread
+from holoviews.operation.downsample import downsample1d
 from holoviews.operation.resample import ResampleOperation2D
 from holoviews.operation import decimate
 
 import panel as pn
 import panel.widgets as pnw
+
+from timedec import timedec
 
 from daskms.experimental.zarr import xds_from_zarr
 
@@ -34,21 +37,25 @@ ResampleOperation2D.width=500
 ResampleOperation2D.height=500
 
 # TODO: Make programmatic + include concatenation when we have mutiple xdss.
-xds = xds_from_zarr("::G")[:1]
+xds = xds_from_zarr("::G") #[:1]
 
 directory_contents = Path.cwd().glob("*")
 
-xds = xarray.combine_by_coords(xds, combine_attrs="drop_conflicts")
+xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
 
+import time
+t0 = time.time()
 gains = xds[["gains", "gain_flags"]].to_dataframe().reset_index()
+print(f"{time.time() - t0}")
 
+t0 = time.time()
 gains["amplitude"] = np.abs(gains["gains"])
 gains["phase"] = np.angle(gains["gains"])
 
 gains["color"] = np.where(gains.gain_flags == True, "red", "blue")
 gains["alpha"] = np.where(gains.gain_flags == True, 0.25, 0.9)
 gains.fillna(0, inplace=True)  # just replace missing values with zero
-
+print(f"{time.time() - t0}")
 axis_map = {
     "Time": "gain_time",
     "Frequency": "gain_freq",
@@ -109,38 +116,58 @@ flag = pnw.Button(name='Flag', button_type='danger')
 
 selection = streams.Selection1D()
 
+@timedec
 @pn.depends(
     x_axis.param.value,
     y_axis.param.value,
     antenna.param.value,
     correlation.param.value,
-    # selection.param.index
 )
 def create_figure(x, y, antenna, correlation):
-    sel = xds.sel(antenna=antenna, correlation=correlation, direction=0).to_dataframe().reset_index()
-    fopts = dict(color='color', height=800, responsive=True)
-    if "Amplitude" in [x, y]:
-        sel["amplitude"] = np.abs(sel["gains"])
-    if "Phase" in [x, y]:
-        sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
-    if "Real" in [x, y]:
-        sel["real"] = np.real(sel["gains"])
-    if "Imaginary" in [x, y]:
-        sel["imaginary"] = np.imag(sel["gains"])
-    sel["color"] = np.where(sel.gain_flags == True, "red", "blue")
-    points = hv.Points(
+    sel = gains[
+        (
+            (gains.antenna == antenna) &
+            (gains.correlation == correlation) # &
+            # (
+            #     (gains.gain_freq >= frequency_lower.value) &
+            #     (gains.gain_freq <= frequency_upper.value)
+            # ) &
+            # (
+            #     (gains.gain_time >= time_lower.value) &
+            #     (gains.gain_time <= time_upper.value)
+            # )
+        )
+    ]
+
+    plot_opts = dict(
+        color='color',
+        height=800,
+        responsive=True,
+        tools=['box_select'],
+        active_tools=['box_select']
+    )
+    # if "Amplitude" in [x, y]:
+    #     sel["amplitude"] = np.abs(sel["gains"])
+    # if "Phase" in [x, y]:
+    #     sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
+    # if "Real" in [x, y]:
+    #     sel["real"] = np.real(sel["gains"])
+    # if "Imaginary" in [x, y]:
+    #     sel["imaginary"] = np.imag(sel["gains"])
+    # sel["color"] = np.where(sel.gain_flags == True, "red", "blue")
+    points = timedec(hv.Points)(
         sel,
         [axis_map[x], axis_map[y]],
         vdims="color",
         label="%s vs %s" % (x.title(), y.title())
-    ).opts(**fopts, tools=['box_select'], active_tools=['box_select'])
+    ).opts(**plot_opts)
 
-    selection.source = points
+    selection.source = points  # Add points as stream source.
 
-    return points
+    return downsample1d(points)
 
 flag.on_click(lambda event: print(selection.index))
 
-widgets = pn.WidgetBox(antenna, x_axis, y_axis, flag) #, width=400)
+widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag) #, width=400)
 
 pn.Row(widgets, create_figure).servable('Cross-selector')
