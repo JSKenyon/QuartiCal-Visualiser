@@ -43,19 +43,19 @@ directory_contents = Path.cwd().glob("*")
 
 xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
 
-import time
-t0 = time.time()
-gains = xds[["gains", "gain_flags"]].to_dataframe().reset_index()
-print(f"{time.time() - t0}")
+# import time
+# t0 = time.time()
+# gains = xds[["gains", "gain_flags"]].to_dataframe().reset_index()
+# print(f"{time.time() - t0}")
 
-t0 = time.time()
-gains["amplitude"] = np.abs(gains["gains"])
-gains["phase"] = np.angle(gains["gains"])
+# t0 = time.time()
+# gains["amplitude"] = np.abs(gains["gains"])
+# gains["phase"] = np.angle(gains["gains"])
 
-gains["color"] = np.where(gains.gain_flags == True, "red", "blue")
-gains["alpha"] = np.where(gains.gain_flags == True, 0.25, 0.9)
-gains.fillna(0, inplace=True)  # just replace missing values with zero
-print(f"{time.time() - t0}")
+# gains["color"] = np.where(gains.gain_flags == True, "red", "blue")
+# gains["alpha"] = np.where(gains.gain_flags == True, 0.25, 0.9)
+# gains.fillna(0, inplace=True)  # just replace missing values with zero
+# print(f"{time.time() - t0}")
 axis_map = {
     "Time": "gain_time",
     "Frequency": "gain_freq",
@@ -65,10 +65,10 @@ axis_map = {
     "Imaginary": "imaginary"
 }
 
-desc = Div(
-    text=(Path(__file__).parent / "description.html").read_text("utf8"),
-    sizing_mode="stretch_width"
-)
+# desc = Div(
+#     text=(Path(__file__).parent / "description.html").read_text("utf8"),
+#     sizing_mode="stretch_width"
+# )
 
 # Create Input controls
 # directories = Select(
@@ -105,8 +105,8 @@ desc = Div(
 #     step=(gains.gain_time.max() - gains.gain_time.min()) / len(set(gains.gain_time))
 # )
 
-antenna = pnw.Select(name="Antenna", options=np.unique(gains.antenna).tolist(), value=gains.antenna[0])
-correlation = pnw.Select(name="Correlation", options=np.unique(gains.correlation).tolist(), value=gains.correlation[0])
+antenna = pnw.Select(name="Antenna", options=xds.antenna.values.tolist(), value=xds.antenna.values[0])
+correlation = pnw.Select(name="Correlation", options=xds.correlation.values.tolist(), value=xds.correlation.values[0])
 x_axis = pnw.Select(name="X Axis", options=list(axis_map.keys()), value="Time")
 y_axis = pnw.Select(name="Y Axis", options=list(axis_map.keys()), value="Amplitude")
 flag = pnw.Button(name='Flag', button_type='danger')
@@ -114,7 +114,8 @@ flag = pnw.Button(name='Flag', button_type='danger')
 # size = pnw.Select(name='Size', value='None', options=['None'] + quantileable)
 # color = pnw.Select(name='Color', value='None', options=['None'] + quantileable)
 
-selection = streams.Selection1D()
+selected_points = streams.Selection1D()
+active_subset = None
 
 @timedec
 @pn.depends(
@@ -122,22 +123,12 @@ selection = streams.Selection1D()
     y_axis.param.value,
     antenna.param.value,
     correlation.param.value,
+    watch=True
 )
 def create_figure(x, y, antenna, correlation):
-    sel = gains[
-        (
-            (gains.antenna == antenna) &
-            (gains.correlation == correlation) # &
-            # (
-            #     (gains.gain_freq >= frequency_lower.value) &
-            #     (gains.gain_freq <= frequency_upper.value)
-            # ) &
-            # (
-            #     (gains.gain_time >= time_lower.value) &
-            #     (gains.gain_time <= time_upper.value)
-            # )
-        )
-    ]
+    active_subset = xds.sel({"antenna": antenna, "correlation": correlation})
+
+    sel = active_subset.to_dataframe()
 
     plot_opts = dict(
         color='color',
@@ -146,15 +137,15 @@ def create_figure(x, y, antenna, correlation):
         tools=['box_select'],
         active_tools=['box_select']
     )
-    # if "Amplitude" in [x, y]:
-    #     sel["amplitude"] = np.abs(sel["gains"])
-    # if "Phase" in [x, y]:
-    #     sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
-    # if "Real" in [x, y]:
-    #     sel["real"] = np.real(sel["gains"])
-    # if "Imaginary" in [x, y]:
-    #     sel["imaginary"] = np.imag(sel["gains"])
-    # sel["color"] = np.where(sel.gain_flags == True, "red", "blue")
+    if "Amplitude" in [x, y]:
+        sel["amplitude"] = np.abs(sel["gains"])
+    if "Phase" in [x, y]:
+        sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
+    if "Real" in [x, y]:
+        sel["real"] = np.real(sel["gains"])
+    if "Imaginary" in [x, y]:
+        sel["imaginary"] = np.imag(sel["gains"])
+    sel["color"] = np.where(sel.gain_flags == True, "red", "blue")
     points = timedec(hv.Points)(
         sel,
         [axis_map[x], axis_map[y]],
@@ -162,11 +153,11 @@ def create_figure(x, y, antenna, correlation):
         label="%s vs %s" % (x.title(), y.title())
     ).opts(**plot_opts)
 
-    selection.source = points  # Add points as stream source.
+    selected_points.source = points  # Add points as stream source.
 
     return points # downsample1d(points)
 
-flag.on_click(lambda event: print(selection.index))
+flag.on_click(lambda event: print(selected_points.index))
 
 widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag) #, width=400)
 
