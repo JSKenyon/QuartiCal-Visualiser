@@ -164,7 +164,7 @@ def create_figure(x, y, antenna, correlation):
 
     selection.source = points  # Add points as stream source.
 
-    return downsample1d(points)
+    return points # downsample1d(points)
 
 flag.on_click(lambda event: print(selection.index))
 
