@@ -37,11 +37,15 @@ ResampleOperation2D.width=500
 ResampleOperation2D.height=500
 
 # TODO: Make programmatic + include concatenation when we have mutiple xdss.
-xds = xds_from_zarr("::G") #[:1]
+xds = xds_from_zarr("::G")[:1]
+
+xds = [x[["gains", "gain_flags"]] for x in xds]
 
 directory_contents = Path.cwd().glob("*")
 
 xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
+
+xds = xds.compute()
 
 # import time
 # t0 = time.time()
@@ -116,6 +120,7 @@ flag = pnw.Button(name='Flag', button_type='danger')
 
 selected_points = streams.Selection1D()
 active_subset = None
+cache = {}
 
 @timedec
 @pn.depends(
@@ -123,12 +128,13 @@ active_subset = None
     y_axis.param.value,
     antenna.param.value,
     correlation.param.value,
-    watch=True
+    # flag.param.value
 )
-def create_figure(x, y, antenna, correlation):
+def create_figure(x, y, antenna, correlation, foo):
+
     active_subset = xds.sel({"antenna": antenna, "correlation": correlation})
 
-    sel = active_subset.to_dataframe()
+    cache["active"] = sel = active_subset.to_dataframe()
 
     plot_opts = dict(
         color='color',
@@ -157,7 +163,28 @@ def create_figure(x, y, antenna, correlation):
 
     return points # downsample1d(points)
 
-flag.on_click(lambda event: print(selected_points.index))
+def debug(event):
+    if not selected_points.index:
+        return
+
+    flag_selection = cache["active"].iloc[selected_points.index]
+
+    index = flag_selection.index
+
+    times, chans, dirs = [index.get_level_values(i) for i in range(3)]
+
+    ant = np.unique(flag_selection["antenna"]).item()
+
+    xds.gain_flags.loc[
+        {
+            "gain_time": times,
+            "gain_freq": chans,
+            "direction": dirs,
+            "antenna": ant
+        }
+    ] = 1
+
+flag.on_click(debug)
 
 widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag) #, width=400)
 
