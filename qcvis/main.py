@@ -188,4 +188,43 @@ flag.on_click(debug)
 
 widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag) #, width=400)
 
-pn.Row(widgets, create_figure).servable('Cross-selector')
+ds = xds[["gains", "gain_flags"]].to_dataframe()#.reset_index()
+
+index = ds.index
+
+foo = index.unique(level="gain_time")
+bar = index.unique(level="gain_freq")
+baz = index.unique(level="antenna")
+correlation_values = index.unique(level="correlation")
+
+# hvds = hv.Dataset(ds, ["gain_time", "antenna", "direction"], ["gain_flags"])
+
+# curve = hvds.to(hv.Scatter, "gain_time", "gain_flags")
+
+# pane = pn.panel(curve, height=800, width=1200, widget_location="left")
+
+
+def sine(antenna, direction, correlation):
+    plot_opts = dict(
+        color='color',
+        height=800,
+        responsive=True,
+        tools=['box_select'],
+        active_tools=['box_select']
+    )
+    sel = ds.loc[(slice(None), slice(None), antenna, direction, correlation)]
+    sel["amplitude"] = np.abs(sel["gains"])
+    sel["color"] = np.where(sel["gain_flags"], "red", "blue")
+    return hv.Scatter(sel, [axis_map[x_axis.value]], [axis_map[y_axis.value], "color"]).opts(**plot_opts)
+
+dmap = hv.DynamicMap(
+    sine,
+    kdims=['antenna', 'direction', 'correlation']).redim.range(direction=(0,1)).redim.values(antenna=baz, correlation=correlation_values)
+
+# dmap_panel = pn.panel(dmap, height=400, sizing_mode="stretch_width")
+
+dmap_pane = pn.pane.HoloViews(dmap, widgets={
+    'x-axis': x_axis
+})
+
+pn.Row(dmap_pane).servable('Cross-selector')
