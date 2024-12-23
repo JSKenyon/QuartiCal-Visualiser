@@ -20,6 +20,7 @@ from holoviews.operation.downsample import downsample1d
 from holoviews.operation.resample import ResampleOperation2D
 from holoviews.operation import decimate
 
+import param
 import panel as pn
 import panel.widgets as pnw
 
@@ -173,7 +174,7 @@ def debug(event):
     sel = ds.iloc[idxs].iloc[selected_points.index]
     ds.loc[sel.index, "gain_flags"] = 1
 
-    print("THERE")
+    x_axis.param.trigger('value')
 
     # import ipdb; ipdb.set_trace()
 
@@ -220,11 +221,9 @@ correlation_values = index.unique(level="correlation")
     correlation,
     x_axis,
     y_axis,
-    flag.param.value
+    # flag.param.value
 )
 def update_plot(*args):
-
-    print("HERE")
 
     plot_opts = dict(
         color='color',
@@ -250,8 +249,6 @@ def update_plot(*args):
 
     selected_points.source = scatter
 
-    print(selected_points.index)
-
     return scatter
 
 # dmap = hv.DynamicMap(pn.bind(update_plot, antenna))
@@ -271,6 +268,35 @@ def update_plot(*args):
 widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag)
 
 pn.Row(widgets, update_plot).servable('Cross-selector')
+
+# import ipdb; ipdb.set_trace()
+
+# class ActionExample(param.Parameterized):
+       
+#     # create a button that when pushed triggers 'button'
+#     button = param.Action(lambda x: x.param.trigger('button'), label='Start training model!')
+      
+#     model_trained = None
+    
+#     # method keeps on watching whether button is triggered
+#     @param.depends('button', watch=True)
+#     def train_model(self):
+#         self.model_df = pd.DataFrame(np.random.normal(size=[50, 2]), columns=['col1', 'col2'])
+#         self.model_trained = True
+
+#     # method is watching whether model_trained is updated
+#     @param.depends('model_trained', watch=True)
+#     def update_graph(self):
+#         if self.model_trained:
+#             return hv.Points(self.model_df)
+#         else:
+#             return "Model not trained yet"
+
+# action_example = ActionExample()
+
+# pn.Row(action_example.param, action_example.update_graph)
+
+
 
 # widget = pn.widgets.IntSlider(value=50, start=1, end=100, name="Number of points")
 
