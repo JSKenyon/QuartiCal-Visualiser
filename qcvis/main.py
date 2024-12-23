@@ -278,6 +278,11 @@ class ActionExample(param.Parameterized):
 
     # create a button that when pushed triggers 'button'
     flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
+    antenna = param.Selector(label="Antenna", objects=xds.antenna.values.tolist(), default=xds.antenna.values[0])
+    direction = param.Selector(label="Direction", objects=xds.direction.values.tolist(), default=xds.direction.values[0])
+    correlation = param.Selector(label="Correlation", objects=xds.correlation.values.tolist(), default=xds.correlation.values[0])
+    x_axis = param.Selector(label="X Axis", objects=list(axis_map.keys()), default="Time")
+    y_axis = param.Selector(label="Y Axis", objects=list(axis_map.keys()), default="Amplitude")
 
     data = ds
 
@@ -289,15 +294,15 @@ class ActionExample(param.Parameterized):
         # self.param.watch(self.update_plot, ['flag'], queued=True, precedence=2)
 
     def flag_selection(self, e):
-
         if not self.selected_points.index:
             return
 
-        idxs = self.data.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
+        idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
         sel = self.data.iloc[idxs].iloc[self.selected_points.index]
         self.data.loc[sel.index, "gain_flags"] = 1
 
     def update_plot(self):
+        print("TIGGERED")
         plot_opts = dict(
             color='color',
             height=800,
@@ -305,20 +310,20 @@ class ActionExample(param.Parameterized):
             tools=['box_select'],
             active_tools=['box_select']
         )
-        sel = self.data.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
+        sel = self.data.loc[(slice(None), slice(None), self.antenna, 0, self.correlation)]
 
-        if "Amplitude" in [x_axis.value, y_axis.value]:
+        if "Amplitude" in [self.x_axis, self.y_axis]:
             sel["amplitude"] = np.abs(sel["gains"])
-        if "Phase" in [x_axis.value, y_axis.value]:
+        if "Phase" in [self.x_axis, self.y_axis]:
             sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
-        if "Real" in [x_axis.value, y_axis.value]:
+        if "Real" in [self.x_axis, self.y_axis]:
             sel["real"] = np.real(sel["gains"])
-        if "Imaginary" in [x_axis.value, y_axis.value]:
+        if "Imaginary" in [self.x_axis, self.y_axis]:
             sel["imaginary"] = np.imag(sel["gains"])
 
         sel["color"] = np.where(sel["gain_flags"], "red", "blue")
 
-        scatter = hv.Scatter(sel, [axis_map[x_axis.value]], [axis_map[y_axis.value], "color"]).opts(**plot_opts)
+        scatter = hv.Scatter(sel, [axis_map[self.x_axis]], [axis_map[self.y_axis], "color"]).opts(**plot_opts)
 
         self.selected_points.source = scatter
 
