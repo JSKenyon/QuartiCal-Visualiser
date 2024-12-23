@@ -5,6 +5,7 @@ sorting options based on a given dataset.
 '''
 from pathlib import Path
 
+import pandas as pd
 import numpy as np
 import xarray
 
@@ -27,6 +28,8 @@ import panel.widgets as pnw
 from timedec import timedec
 
 from daskms.experimental.zarr import xds_from_zarr
+
+pd.options.mode.copy_on_write = True
 
 hv.extension('bokeh', width=100)
 
@@ -181,7 +184,7 @@ def debug(event):
     # idxs = ds.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
     # sel = ds.iloc[idxs]  # retains indexed out levels.
     # ds.loc[sel.index]["gain_flags"] = 1  # Update dataset.
- 
+
     # sel = ds.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
 
     # sel.iloc[selected_points.index]["gain_flags"] = 1
@@ -263,38 +266,74 @@ def update_plot(*args):
 #     'x-axis': x_axis
 # })
 
-# import ipdb; ipdb.set_trace()   
+# import ipdb; ipdb.set_trace()
 
 widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag)
 
-pn.Row(widgets, update_plot).servable('Cross-selector')
+# pn.Row(widgets, update_plot).servable('Cross-selector')
 
 # import ipdb; ipdb.set_trace()
 
-# class ActionExample(param.Parameterized):
-       
-#     # create a button that when pushed triggers 'button'
-#     button = param.Action(lambda x: x.param.trigger('button'), label='Start training model!')
-      
-#     model_trained = None
-    
-#     # method keeps on watching whether button is triggered
-#     @param.depends('button', watch=True)
-#     def train_model(self):
-#         self.model_df = pd.DataFrame(np.random.normal(size=[50, 2]), columns=['col1', 'col2'])
-#         self.model_trained = True
+class ActionExample(param.Parameterized):
 
-#     # method is watching whether model_trained is updated
-#     @param.depends('model_trained', watch=True)
-#     def update_graph(self):
-#         if self.model_trained:
-#             return hv.Points(self.model_df)
-#         else:
-#             return "Model not trained yet"
+    # create a button that when pushed triggers 'button'
+    flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
 
-# action_example = ActionExample()
+    data = ds
 
-# pn.Row(action_example.param, action_example.update_graph)
+    selected_points = streams.Selection1D()
+
+    def __init__(self, **params):
+        super().__init__(**params)
+        self.param.watch(self.flag_selection, ['flag'], queued=True)
+        # self.param.watch(self.update_plot, ['flag'], queued=True, precedence=2)
+
+    def flag_selection(self, e):
+
+        if not self.selected_points.index:
+            return
+
+        idxs = self.data.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
+        sel = self.data.iloc[idxs].iloc[self.selected_points.index]
+        self.data.loc[sel.index, "gain_flags"] = 1
+
+    def update_plot(self):
+        plot_opts = dict(
+            color='color',
+            height=800,
+            responsive=True,
+            tools=['box_select'],
+            active_tools=['box_select']
+        )
+        sel = self.data.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
+
+        if "Amplitude" in [x_axis.value, y_axis.value]:
+            sel["amplitude"] = np.abs(sel["gains"])
+        if "Phase" in [x_axis.value, y_axis.value]:
+            sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
+        if "Real" in [x_axis.value, y_axis.value]:
+            sel["real"] = np.real(sel["gains"])
+        if "Imaginary" in [x_axis.value, y_axis.value]:
+            sel["imaginary"] = np.imag(sel["gains"])
+
+        sel["color"] = np.where(sel["gain_flags"], "red", "blue")
+
+        scatter = hv.Scatter(sel, [axis_map[x_axis.value]], [axis_map[y_axis.value], "color"]).opts(**plot_opts)
+
+        self.selected_points.source = scatter
+
+        return scatter
+
+action_example = ActionExample()
+
+customised_params= pn.Param(action_example.param, widgets={
+        # 'update': {'visible': False},
+        'flag': pn.widgets.Button
+    }
+)
+
+
+pn.Row(customised_params, action_example.update_plot).servable()
 
 
 
