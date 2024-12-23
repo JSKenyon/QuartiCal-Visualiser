@@ -47,6 +47,8 @@ xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
 
 xds = xds.compute()
 
+ds = xds[["gains", "gain_flags"]].to_dataframe()
+
 # import time
 # t0 = time.time()
 # gains = xds[["gains", "gain_flags"]].to_dataframe().reset_index()
@@ -128,7 +130,7 @@ cache = {}
     y_axis.param.value,
     antenna.param.value,
     correlation.param.value,
-    # flag.param.value
+    flag.param.value
 )
 def create_figure(x, y, antenna, correlation, foo):
 
@@ -167,28 +169,42 @@ def debug(event):
     if not selected_points.index:
         return
 
-    flag_selection = cache["active"].iloc[selected_points.index]
+    idxs = ds.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
+    sel = ds.iloc[idxs].iloc[selected_points.index]
+    ds.loc[sel.index, "gain_flags"] = 1
 
-    index = flag_selection.index
+    print("THERE")
 
-    times, chans, dirs = [index.get_level_values(i) for i in range(3)]
+    # import ipdb; ipdb.set_trace()
 
-    ant = np.unique(flag_selection["antenna"]).item()
+    # idxs = ds.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
+    # sel = ds.iloc[idxs]  # retains indexed out levels.
+    # ds.loc[sel.index]["gain_flags"] = 1  # Update dataset.
+ 
+    # sel = ds.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
 
-    xds.gain_flags.loc[
-        {
-            "gain_time": times,
-            "gain_freq": chans,
-            "direction": dirs,
-            "antenna": ant
-        }
-    ] = 1
+    # sel.iloc[selected_points.index]["gain_flags"] = 1
+
+    # import ipdb; ipdb.set_trace()
+
+    # index = flag_selection.index
+
+    # times, chans, dirs = [index.get_level_values(i) for i in range(3)]
+
+    # ant = np.unique(flag_selection["antenna"]).item()
+
+    # xds.gain_flags.loc[
+    #     {
+    #         "gain_time": times,
+    #         "gain_freq": chans,
+    #         "direction": dirs,
+    #         "antenna": ant
+    #     }
+    # ] = 1
 
 flag.on_click(debug)
 
-widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag) #, width=400)
 
-ds = xds[["gains", "gain_flags"]].to_dataframe()#.reset_index()
 
 index = ds.index
 
@@ -197,14 +213,19 @@ bar = index.unique(level="gain_freq")
 baz = index.unique(level="antenna")
 correlation_values = index.unique(level="correlation")
 
-# hvds = hv.Dataset(ds, ["gain_time", "antenna", "direction"], ["gain_flags"])
-
-# curve = hvds.to(hv.Scatter, "gain_time", "gain_flags")
-
-# pane = pn.panel(curve, height=800, width=1200, widget_location="left")
 
 
-def sine(antenna, direction, correlation):
+@pn.depends(
+    antenna,
+    correlation,
+    x_axis,
+    y_axis,
+    flag.param.value
+)
+def update_plot(*args):
+
+    print("HERE")
+
     plot_opts = dict(
         color='color',
         height=800,
@@ -212,19 +233,54 @@ def sine(antenna, direction, correlation):
         tools=['box_select'],
         active_tools=['box_select']
     )
-    sel = ds.loc[(slice(None), slice(None), antenna, direction, correlation)]
-    sel["amplitude"] = np.abs(sel["gains"])
+    sel = ds.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
+
+    if "Amplitude" in [x_axis.value, y_axis.value]:
+        sel["amplitude"] = np.abs(sel["gains"])
+    if "Phase" in [x_axis.value, y_axis.value]:
+        sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
+    if "Real" in [x_axis.value, y_axis.value]:
+        sel["real"] = np.real(sel["gains"])
+    if "Imaginary" in [x_axis.value, y_axis.value]:
+        sel["imaginary"] = np.imag(sel["gains"])
+
     sel["color"] = np.where(sel["gain_flags"], "red", "blue")
-    return hv.Scatter(sel, [axis_map[x_axis.value]], [axis_map[y_axis.value], "color"]).opts(**plot_opts)
 
-dmap = hv.DynamicMap(
-    sine,
-    kdims=['antenna', 'direction', 'correlation']).redim.range(direction=(0,1)).redim.values(antenna=baz, correlation=correlation_values)
+    scatter = hv.Scatter(sel, [axis_map[x_axis.value]], [axis_map[y_axis.value], "color"]).opts(**plot_opts)
 
-# dmap_panel = pn.panel(dmap, height=400, sizing_mode="stretch_width")
+    selected_points.source = scatter
 
-dmap_pane = pn.pane.HoloViews(dmap, widgets={
-    'x-axis': x_axis
-})
+    print(selected_points.index)
 
-pn.Row(dmap_pane).servable('Cross-selector')
+    return scatter
+
+# dmap = hv.DynamicMap(pn.bind(update_plot, antenna))
+
+# dmap = hv.DynamicMap(
+#     sine,
+#     kdims=['antenna', 'direction', 'correlation']).redim.range(direction=(0,1)).redim.values(antenna=baz, correlation=correlation_values)
+
+# dmap_panel = pn.panel(dmap, sizing_mode="stretch_width")
+
+# dmap_pane = pn.pane.HoloViews(dmap, widgets={
+#     'x-axis': x_axis
+# })
+
+# import ipdb; ipdb.set_trace()   
+
+widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag)
+
+pn.Row(widgets, update_plot).servable('Cross-selector')
+
+# widget = pn.widgets.IntSlider(value=50, start=1, end=100, name="Number of points")
+
+# @pn.depends(widget.param.value)
+# def get_plot(n):
+#     return hv.Scatter(range(n), kdims="x", vdims="y").opts(
+#         height=300, responsive=True, xlim=(0, 100), ylim=(0, 100)
+#     )
+
+
+# # plot = hv.DynamicMap(pn.bind(get_plot, widget))
+
+# pn.Column(widget, get_plot).servable()
