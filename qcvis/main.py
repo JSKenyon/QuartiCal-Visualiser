@@ -41,7 +41,7 @@ ResampleOperation2D.width=500
 ResampleOperation2D.height=500
 
 # TODO: Make programmatic + include concatenation when we have mutiple xdss.
-xds = xds_from_zarr("::G")[:1]
+xds = xds_from_zarr("::G")#[:1]
 
 xds = [x[["gains", "gain_flags"]] for x in xds]
 
@@ -49,7 +49,7 @@ directory_contents = Path.cwd().glob("*")
 
 xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
 
-xds = xds.compute()
+# xds = xds.compute()
 
 ds = xds[["gains", "gain_flags"]].to_dataframe()
 
@@ -75,140 +75,6 @@ axis_map = {
     "Imaginary": "imaginary"
 }
 
-# desc = Div(
-#     text=(Path(__file__).parent / "description.html").read_text("utf8"),
-#     sizing_mode="stretch_width"
-# )
-
-# Create Input controls
-# directories = Select(
-#     title="Gain",
-#     options=[str(p) for p in directory_contents],
-#     value="::G"
-# )
-# frequency_lower = pnw.DiscreteSlider(
-#     name="Frequency (Min)",
-#     value=gains.gain_freq.min(),
-#     start=gains.gain_freq.min(),
-#     end=gains.gain_freq.max(),
-#     step=(gains.gain_freq.max() - gains.gain_freq.min()) / len(set(gains.gain_freq))
-# )
-# frequency_upper = Slider(
-#     title="Frequency (Max)",
-#     value=gains.gain_freq.max(),
-#     start=gains.gain_freq.min(),
-#     end=gains.gain_freq.max(),
-#     step=(gains.gain_freq.max() - gains.gain_freq.min()) / len(set(gains.gain_freq))
-# )
-# time_lower = Slider(
-#     title="Time (Min)",
-#     value=gains.gain_time.min(),
-#     start=gains.gain_time.min(),
-#     end=gains.gain_time.max(),
-#     step=(gains.gain_time.max() - gains.gain_time.min()) / len(set(gains.gain_time))
-# )
-# time_upper = Slider(
-#     title="Time (Max)",
-#     value=gains.gain_time.max(),
-#     start=gains.gain_time.min(),
-#     end=gains.gain_time.max(),
-#     step=(gains.gain_time.max() - gains.gain_time.min()) / len(set(gains.gain_time))
-# )
-
-antenna = pnw.Select(name="Antenna", options=xds.antenna.values.tolist(), value=xds.antenna.values[0])
-correlation = pnw.Select(name="Correlation", options=xds.correlation.values.tolist(), value=xds.correlation.values[0])
-x_axis = pnw.Select(name="X Axis", options=list(axis_map.keys()), value="Time")
-y_axis = pnw.Select(name="Y Axis", options=list(axis_map.keys()), value="Amplitude")
-flag = pnw.Button(name='Flag', button_type='danger')
-
-# size = pnw.Select(name='Size', value='None', options=['None'] + quantileable)
-# color = pnw.Select(name='Color', value='None', options=['None'] + quantileable)
-
-selected_points = streams.Selection1D()
-active_subset = None
-cache = {}
-
-@timedec
-@pn.depends(
-    x_axis.param.value,
-    y_axis.param.value,
-    antenna.param.value,
-    correlation.param.value,
-    flag.param.value
-)
-def create_figure(x, y, antenna, correlation, foo):
-
-    active_subset = xds.sel({"antenna": antenna, "correlation": correlation})
-
-    cache["active"] = sel = active_subset.to_dataframe()
-
-    plot_opts = dict(
-        color='color',
-        height=800,
-        responsive=True,
-        tools=['box_select'],
-        active_tools=['box_select']
-    )
-    if "Amplitude" in [x, y]:
-        sel["amplitude"] = np.abs(sel["gains"])
-    if "Phase" in [x, y]:
-        sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
-    if "Real" in [x, y]:
-        sel["real"] = np.real(sel["gains"])
-    if "Imaginary" in [x, y]:
-        sel["imaginary"] = np.imag(sel["gains"])
-    sel["color"] = np.where(sel.gain_flags == True, "red", "blue")
-    points = timedec(hv.Points)(
-        sel,
-        [axis_map[x], axis_map[y]],
-        vdims="color",
-        label="%s vs %s" % (x.title(), y.title())
-    ).opts(**plot_opts)
-
-    selected_points.source = points  # Add points as stream source.
-
-    return points # downsample1d(points)
-
-def debug(event):
-    if not selected_points.index:
-        return
-
-    idxs = ds.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
-    sel = ds.iloc[idxs].iloc[selected_points.index]
-    ds.loc[sel.index, "gain_flags"] = 1
-
-    x_axis.param.trigger('value')
-
-    # import ipdb; ipdb.set_trace()
-
-    # idxs = ds.index.get_locs((slice(None), slice(None), antenna.value, 0, correlation.value))
-    # sel = ds.iloc[idxs]  # retains indexed out levels.
-    # ds.loc[sel.index]["gain_flags"] = 1  # Update dataset.
-
-    # sel = ds.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
-
-    # sel.iloc[selected_points.index]["gain_flags"] = 1
-
-    # import ipdb; ipdb.set_trace()
-
-    # index = flag_selection.index
-
-    # times, chans, dirs = [index.get_level_values(i) for i in range(3)]
-
-    # ant = np.unique(flag_selection["antenna"]).item()
-
-    # xds.gain_flags.loc[
-    #     {
-    #         "gain_time": times,
-    #         "gain_freq": chans,
-    #         "direction": dirs,
-    #         "antenna": ant
-    #     }
-    # ] = 1
-
-flag.on_click(debug)
-
-
 
 index = ds.index
 
@@ -219,61 +85,6 @@ correlation_values = index.unique(level="correlation")
 
 
 
-@pn.depends(
-    antenna,
-    correlation,
-    x_axis,
-    y_axis,
-    # flag.param.value
-)
-def update_plot(*args):
-
-    plot_opts = dict(
-        color='color',
-        height=800,
-        responsive=True,
-        tools=['box_select'],
-        active_tools=['box_select']
-    )
-    sel = ds.loc[(slice(None), slice(None), antenna.value, 0, correlation.value)]
-
-    if "Amplitude" in [x_axis.value, y_axis.value]:
-        sel["amplitude"] = np.abs(sel["gains"])
-    if "Phase" in [x_axis.value, y_axis.value]:
-        sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
-    if "Real" in [x_axis.value, y_axis.value]:
-        sel["real"] = np.real(sel["gains"])
-    if "Imaginary" in [x_axis.value, y_axis.value]:
-        sel["imaginary"] = np.imag(sel["gains"])
-
-    sel["color"] = np.where(sel["gain_flags"], "red", "blue")
-
-    scatter = hv.Scatter(sel, [axis_map[x_axis.value]], [axis_map[y_axis.value], "color"]).opts(**plot_opts)
-
-    selected_points.source = scatter
-
-    return scatter
-
-# dmap = hv.DynamicMap(pn.bind(update_plot, antenna))
-
-# dmap = hv.DynamicMap(
-#     sine,
-#     kdims=['antenna', 'direction', 'correlation']).redim.range(direction=(0,1)).redim.values(antenna=baz, correlation=correlation_values)
-
-# dmap_panel = pn.panel(dmap, sizing_mode="stretch_width")
-
-# dmap_pane = pn.pane.HoloViews(dmap, widgets={
-#     'x-axis': x_axis
-# })
-
-# import ipdb; ipdb.set_trace()
-
-widgets = pn.WidgetBox(antenna, correlation, x_axis, y_axis, flag)
-
-# pn.Row(widgets, update_plot).servable('Cross-selector')
-
-# import ipdb; ipdb.set_trace()
-
 class ActionExample(param.Parameterized):
 
     # create a button that when pushed triggers 'button'
@@ -283,15 +94,45 @@ class ActionExample(param.Parameterized):
     correlation = param.Selector(label="Correlation", objects=xds.correlation.values.tolist(), default=xds.correlation.values[0])
     x_axis = param.Selector(label="X Axis", objects=list(axis_map.keys()), default="Time")
     y_axis = param.Selector(label="Y Axis", objects=list(axis_map.keys()), default="Amplitude")
+    datashaded = param.Boolean(label="Datashade", default=True)
 
     data = ds
 
     selected_points = streams.Selection1D()
+    visible_points = streams.RangeXY()
 
     def __init__(self, **params):
         super().__init__(**params)
         self.param.watch(self.flag_selection, ['flag'], queued=True)
-        # self.param.watch(self.update_plot, ['flag'], queued=True, precedence=2)
+
+        self.visible_points.add_subscriber(self.on_zoom, precedence=1)
+
+        self.x_min, self.x_max = None, None
+        self.y_min, self.y_max = None, None
+
+        self.scatter = hv.Scatter([])
+
+    @timedec
+    def on_zoom(self, x_range, y_range):
+        print("TRIGGERED ZOOM")
+        self.x_min, self.x_max = x_min, x_max = x_range
+        self.y_min, self.y_max = y_min, y_max = y_range
+
+        sel = self.data.loc[(slice(None), slice(None), self.antenna, 0, self.correlation)]
+
+        self.add_derived_columns(sel)
+
+        sel = sel.reset_index()  # This simplifies matters although it may be inefficient.
+
+        # x_axis selection
+        sel = sel.iloc[np.where(np.logical_and(x_min < sel[axis_map[self.x_axis]], sel[axis_map[self.x_axis]] < x_max))]
+        # y_axis selection
+        sel = sel.iloc[np.where(np.logical_and(y_min < sel[axis_map[self.y_axis]], sel[axis_map[self.y_axis]] < y_max))]
+
+        if len(sel) < 5000:
+            self.datashaded = False
+        else:
+            self.datashaded = True
 
     def flag_selection(self, e):
         if not self.selected_points.index:
@@ -301,8 +142,9 @@ class ActionExample(param.Parameterized):
         sel = self.data.iloc[idxs].iloc[self.selected_points.index]
         self.data.loc[sel.index, "gain_flags"] = 1
 
+    @timedec
     def update_plot(self):
-        print("TIGGERED")
+        print("TRIGGERED UPDATE")
         plot_opts = dict(
             color='color',
             height=800,
@@ -312,22 +154,44 @@ class ActionExample(param.Parameterized):
         )
         sel = self.data.loc[(slice(None), slice(None), self.antenna, 0, self.correlation)]
 
-        if "Amplitude" in [self.x_axis, self.y_axis]:
-            sel["amplitude"] = np.abs(sel["gains"])
-        if "Phase" in [self.x_axis, self.y_axis]:
-            sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
-        if "Real" in [self.x_axis, self.y_axis]:
-            sel["real"] = np.real(sel["gains"])
-        if "Imaginary" in [self.x_axis, self.y_axis]:
-            sel["imaginary"] = np.imag(sel["gains"])
+        self.add_derived_columns(sel)
 
         sel["color"] = np.where(sel["gain_flags"], "red", "blue")
 
         scatter = hv.Scatter(sel, [axis_map[self.x_axis]], [axis_map[self.y_axis], "color"]).opts(**plot_opts)
 
         self.selected_points.source = scatter
+        self.visible_points.source = scatter
 
-        return scatter
+        if self.datashaded:
+            del plot_opts["color"]
+            foo = datashade(scatter).opts(**plot_opts, hooks=[self._set_current_zoom])
+            # foo.streams[1].update(x_range=(self.x_min, self.x_max), y_range=(self.y_min, self.y_max))
+        else:
+            foo = scatter.opts(hooks=[self._set_current_zoom])
+
+        return foo
+
+    def add_derived_columns(self, df):
+        if "Amplitude" in [self.x_axis, self.y_axis]:
+            df["amplitude"] = np.abs(df["gains"])
+        if "Phase" in [self.x_axis, self.y_axis]:
+            df["phase"] = np.rad2deg(np.angle(df["gains"]))
+        if "Real" in [self.x_axis, self.y_axis]:
+            df["real"] = np.real(df["gains"])
+        if "Imaginary" in [self.x_axis, self.y_axis]:
+            df["imaginary"] = np.imag(df["gains"])
+
+    def _set_current_zoom(self, plot, element):
+        # Access the Bokeh plot object and set zoom range
+        if self.x_min is not None:
+            self.visible_points.update(x_range=(self.x_min, self.x_max), y_range=(self.y_min, self.y_max))
+            plot.state.x_range.start = self.x_min
+            plot.state.x_range.end = self.x_max
+            plot.state.y_range.start = self.y_min
+            plot.state.y_range.end = self.y_max
+
+
 
 action_example = ActionExample()
 
@@ -338,19 +202,60 @@ customised_params= pn.Param(action_example.param, widgets={
 )
 
 
-pn.Row(customised_params, action_example.update_plot).servable()
+myrow = pn.Row(customised_params, action_example.update_plot).servable()
 
+# class WidgetParams(param.Parameterized):
 
+#     # create a button that when pushed triggers 'button'
+#     flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
+#     antenna = param.Selector(label="Antenna", objects=xds.antenna.values.tolist(), default=xds.antenna.values[0])
+#     direction = param.Selector(label="Direction", objects=xds.direction.values.tolist(), default=xds.direction.values[0])
+#     correlation = param.Selector(label="Correlation", objects=xds.correlation.values.tolist(), default=xds.correlation.values[0])
+#     x_axis = param.Selector(label="X Axis", objects=list(axis_map.keys()), default="Time")
+#     y_axis = param.Selector(label="Y Axis", objects=list(axis_map.keys()), default="Amplitude")
 
-# widget = pn.widgets.IntSlider(value=50, start=1, end=100, name="Number of points")
+# tunables = WidgetParams()
 
-# @pn.depends(widget.param.value)
-# def get_plot(n):
-#     return hv.Scatter(range(n), kdims="x", vdims="y").opts(
-#         height=300, responsive=True, xlim=(0, 100), ylim=(0, 100)
+# def dmap_update(flag, antenna, direction, correlation, x_axis, y_axis):
+
+#     print("TRIGGERED", antenna, correlation)
+
+#     plot_opts = dict(
+#         color='color',
+#         height=800,
+#         responsive=True,
+#         tools=['box_select'],
+#         active_tools=['box_select']
 #     )
+#     sel = ds.loc[(slice(None), slice(None), antenna, 0, correlation)]
 
+#     if "Amplitude" in [x_axis, y_axis]:
+#         sel["amplitude"] = np.abs(sel["gains"])
+#     if "Phase" in [x_axis, y_axis]:
+#         sel["phase"] = np.rad2deg(np.angle(sel["gains"]))
+#     if "Real" in [x_axis, y_axis]:
+#         sel["real"] = np.real(sel["gains"])
+#     if "Imaginary" in [x_axis, y_axis]:
+#         sel["imaginary"] = np.imag(sel["gains"])
 
-# # plot = hv.DynamicMap(pn.bind(get_plot, widget))
+#     sel["color"] = np.where(sel["gain_flags"], "red", "blue")
 
-# pn.Column(widget, get_plot).servable()
+#     scatter = hv.Scatter(sel, [axis_map[x_axis]], [axis_map[y_axis], "color"]).opts(**plot_opts)
+
+#     selected_points.source = scatter
+
+#     return scatter
+
+# mystreams = dict(
+#     flag=tunables.param.flag,
+#     antenna=antenna.param.value, #tunables.param.antenna,
+#     direction=tunables.param.direction,
+#     correlation=tunables.param.correlation,
+#     x_axis=tunables.param.x_axis,
+#     y_axis=tunables.param.y_axis
+# )
+
+# dmap = hv.DynamicMap(dmap_update, streams=mystreams)
+
+# pn.Row(tunables, pn.panel(dmap)).servable()
+
