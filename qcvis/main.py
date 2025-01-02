@@ -157,18 +157,13 @@ class ActionExample(param.Parameterized):
 
     @timedec
     def on_zoom(self, x_range, y_range):
-        print("TRIGGERED ZOOM")
         self.x_min, self.x_max = x_min, x_max = x_range
         self.y_min, self.y_max = y_min, y_max = y_range
 
-        sel = self.current_selection
-
-        sel = sel.reset_index()  # This simplifies matters although it may be inefficient.
-
-        # x_axis selection
-        sel = sel.iloc[np.where(np.logical_and(x_min < sel[axis_map[self.x_axis]], sel[axis_map[self.x_axis]] < x_max))]
-        # y_axis selection
-        sel = sel.iloc[np.where(np.logical_and(y_min < sel[axis_map[self.y_axis]], sel[axis_map[self.y_axis]] < y_max))]
+        sel = self.current_selection.query(
+            f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
+            f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
+        )
 
         if len(sel) < self.datashade_when: # Make this configurable?
             self.datashaded = False
