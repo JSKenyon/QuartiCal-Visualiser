@@ -95,6 +95,7 @@ class ActionExample(param.Parameterized):
     x_axis = param.Selector(label="X Axis", objects=list(axis_map.keys()), default="Time")
     y_axis = param.Selector(label="Y Axis", objects=list(axis_map.keys()), default="Amplitude")
     datashaded = param.Boolean(label="Datashade", default=True)
+    datashade_when = param.Integer(label="Datashade limit", bounds=(0, None), default=10000)
 
     data = ds
 
@@ -103,14 +104,14 @@ class ActionExample(param.Parameterized):
 
     def __init__(self, **params):
         super().__init__(**params)
-        self.param.watch(self.flag_selection, ['flag'], queued=True)
 
+        self.param.watch(self.flag_selection, ['flag'], queued=True)
         self.visible_points.add_subscriber(self.on_zoom, precedence=1)
 
         self.x_min, self.x_max = None, None
         self.y_min, self.y_max = None, None
 
-        self.scatter = hv.Scatter([])
+        self.selection_cache = {}
 
     @timedec
     def on_zoom(self, x_range, y_range):
@@ -118,9 +119,7 @@ class ActionExample(param.Parameterized):
         self.x_min, self.x_max = x_min, x_max = x_range
         self.y_min, self.y_max = y_min, y_max = y_range
 
-        sel = self.data.loc[(slice(None), slice(None), self.antenna, 0, self.correlation)]
-
-        self.add_derived_columns(sel)
+        sel = self.current_selection
 
         sel = sel.reset_index()  # This simplifies matters although it may be inefficient.
 
@@ -129,7 +128,7 @@ class ActionExample(param.Parameterized):
         # y_axis selection
         sel = sel.iloc[np.where(np.logical_and(y_min < sel[axis_map[self.y_axis]], sel[axis_map[self.y_axis]] < y_max))]
 
-        if len(sel) < 5000:
+        if len(sel) < self.datashade_when: # Make this configurable?
             self.datashaded = False
         else:
             self.datashaded = True
@@ -142,6 +141,35 @@ class ActionExample(param.Parameterized):
         sel = self.data.iloc[idxs].iloc[self.selected_points.index]
         self.data.loc[sel.index, "gain_flags"] = 1
 
+    @property
+    def selection_key(self):
+        return (
+            "antenna", self.antenna,
+            "direction", self.direction,
+            "correlation", self.correlation 
+        )
+
+    @property
+    def current_selection(self):
+
+        selection_key = self.selection_key
+
+        if not selection_key in self.selection_cache:
+            print("Invalidating cache!")
+            self.selection_cache = {}  # Empty the cache.
+
+            self.selection_cache[selection_key] = self.data.loc[
+                (
+                    slice(None),
+                    slice(None),
+                    self.antenna,
+                    self.direction,
+                    self.correlation
+                )
+            ]
+
+        return self.selection_cache[selection_key]
+
     @timedec
     def update_plot(self):
         print("TRIGGERED UPDATE")
@@ -152,7 +180,7 @@ class ActionExample(param.Parameterized):
             tools=['box_select'],
             active_tools=['box_select']
         )
-        sel = self.data.loc[(slice(None), slice(None), self.antenna, 0, self.correlation)]
+        sel = self.current_selection
 
         self.add_derived_columns(sel)
 
@@ -165,22 +193,30 @@ class ActionExample(param.Parameterized):
 
         if self.datashaded:
             del plot_opts["color"]
-            foo = datashade(scatter).opts(**plot_opts, hooks=[self._set_current_zoom])
+            plot = datashade(scatter).opts(**plot_opts, hooks=[self._set_current_zoom])
             # foo.streams[1].update(x_range=(self.x_min, self.x_max), y_range=(self.y_min, self.y_max))
         else:
-            foo = scatter.opts(hooks=[self._set_current_zoom])
+            plot = scatter.opts(hooks=[self._set_current_zoom])
 
-        return foo
+        return plot
 
     def add_derived_columns(self, df):
-        if "Amplitude" in [self.x_axis, self.y_axis]:
-            df["amplitude"] = np.abs(df["gains"])
-        if "Phase" in [self.x_axis, self.y_axis]:
-            df["phase"] = np.rad2deg(np.angle(df["gains"]))
-        if "Real" in [self.x_axis, self.y_axis]:
-            df["real"] = np.real(df["gains"])
-        if "Imaginary" in [self.x_axis, self.y_axis]:
-            df["imaginary"] = np.imag(df["gains"])
+        required_columns = {axis_map[k] for k in [self.x_axis, self.y_axis]}
+
+        available_columns = set(df.columns.to_list() + df.index.names)
+
+        missing_columns = required_columns - available_columns
+
+        func_map = {
+            "amplitude": np.abs,
+            "phase": lambda arr: np.rad2deg(np.angle(arr)),
+            "real": np.real,
+            "imag": np.imag
+        }
+
+        for column in missing_columns:
+            print(f"Adding{column}")
+            df[column] = func_map[column](df["gains"])
 
     def _set_current_zoom(self, plot, element):
         # Access the Bokeh plot object and set zoom range
