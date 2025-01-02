@@ -106,6 +106,7 @@ class ActionExample(param.Parameterized):
         super().__init__(**params)
 
         self.param.watch(self.flag_selection, ['flag'], queued=True)
+        self.param.watch(self.reset_zoom, ['x_axis', 'y_axis'], queued=True)
         self.visible_points.add_subscriber(self.on_zoom, precedence=1)
 
         self.x_min, self.x_max = None, None
@@ -113,33 +114,13 @@ class ActionExample(param.Parameterized):
 
         self.selection_cache = {}
 
-    @timedec
-    def on_zoom(self, x_range, y_range):
-        print("TRIGGERED ZOOM")
-        self.x_min, self.x_max = x_min, x_max = x_range
-        self.y_min, self.y_max = y_min, y_max = y_range
-
-        sel = self.current_selection
-
-        sel = sel.reset_index()  # This simplifies matters although it may be inefficient.
-
-        # x_axis selection
-        sel = sel.iloc[np.where(np.logical_and(x_min < sel[axis_map[self.x_axis]], sel[axis_map[self.x_axis]] < x_max))]
-        # y_axis selection
-        sel = sel.iloc[np.where(np.logical_and(y_min < sel[axis_map[self.y_axis]], sel[axis_map[self.y_axis]] < y_max))]
-
-        if len(sel) < self.datashade_when: # Make this configurable?
-            self.datashaded = False
+    def reset_zoom(self, event):
+        if event.name == "x_axis":
+            self.x_min, self.x_max = None, None
+        elif event.name == "y_axis":
+            self.y_min, self.y_max = None, None
         else:
-            self.datashaded = True
-
-    def flag_selection(self, e):
-        if not self.selected_points.index:
-            return
-
-        idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
-        sel = self.data.iloc[idxs].iloc[self.selected_points.index]
-        self.data.loc[sel.index, "gain_flags"] = 1
+            raise ValueError(f"Reset zoom event not understood: {event}")
 
     @property
     def selection_key(self):
@@ -169,6 +150,38 @@ class ActionExample(param.Parameterized):
             ]
 
         return self.selection_cache[selection_key]
+
+    @property
+    def current_axes(self):
+        return (self.x_axis, self.y_axis)
+
+    @timedec
+    def on_zoom(self, x_range, y_range):
+        print("TRIGGERED ZOOM")
+        self.x_min, self.x_max = x_min, x_max = x_range
+        self.y_min, self.y_max = y_min, y_max = y_range
+
+        sel = self.current_selection
+
+        sel = sel.reset_index()  # This simplifies matters although it may be inefficient.
+
+        # x_axis selection
+        sel = sel.iloc[np.where(np.logical_and(x_min < sel[axis_map[self.x_axis]], sel[axis_map[self.x_axis]] < x_max))]
+        # y_axis selection
+        sel = sel.iloc[np.where(np.logical_and(y_min < sel[axis_map[self.y_axis]], sel[axis_map[self.y_axis]] < y_max))]
+
+        if len(sel) < self.datashade_when: # Make this configurable?
+            self.datashaded = False
+        else:
+            self.datashaded = True
+
+    def flag_selection(self, e):
+        if not self.selected_points.index:
+            return
+
+        idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
+        sel = self.data.iloc[idxs].iloc[self.selected_points.index]
+        self.data.loc[sel.index, "gain_flags"] = 1
 
     @timedec
     def update_plot(self):
@@ -211,7 +224,7 @@ class ActionExample(param.Parameterized):
             "amplitude": np.abs,
             "phase": lambda arr: np.rad2deg(np.angle(arr)),
             "real": np.real,
-            "imag": np.imag
+            "imaginary": np.imag
         }
 
         for column in missing_columns:
