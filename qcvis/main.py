@@ -14,6 +14,8 @@ from bokeh.layouts import column, row
 from bokeh.models import ColumnDataSource, Div, Select, Slider, Button
 from bokeh.plotting import figure
 
+import hvplot.pandas
+
 import holoviews as hv
 from holoviews import opts, streams
 from holoviews.operation.datashader import datashade, rasterize, shade, dynspread, spread
@@ -23,6 +25,7 @@ from holoviews.operation import decimate
 
 import param
 import panel as pn
+from panel.io import hold
 import panel.widgets as pnw
 
 from timedec import timedec
@@ -83,12 +86,11 @@ bar = index.unique(level="gain_freq")
 baz = index.unique(level="antenna")
 correlation_values = index.unique(level="correlation")
 
-
-
 class ActionExample(param.Parameterized):
 
     # create a button that when pushed triggers 'button'
     flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
+    redraw = param.Action(lambda x: x.param.trigger('redraw'), label='REDRAW')
     antenna = param.Selector(label="Antenna", objects=xds.antenna.values.tolist(), default=xds.antenna.values[0])
     direction = param.Selector(label="Direction", objects=xds.direction.values.tolist(), default=xds.direction.values[0])
     correlation = param.Selector(label="Correlation", objects=xds.correlation.values.tolist(), default=xds.correlation.values[0])
@@ -97,30 +99,49 @@ class ActionExample(param.Parameterized):
     datashaded = param.Boolean(label="Datashade", default=True)
     datashade_when = param.Integer(label="Datashade limit", bounds=(0, None), default=10000)
 
-    data = ds
-
     selected_points = streams.Selection1D()
     visible_points = streams.RangeXY()
+    # plot_resetter = streams.PlotReset()
 
     def __init__(self, **params):
         super().__init__(**params)
 
+        self.data = ds  # Make this an argument.
+ 
         self.param.watch(self.flag_selection, ['flag'], queued=True)
-        self.param.watch(self.reset_zoom, ['x_axis', 'y_axis'], queued=True)
-        self.visible_points.add_subscriber(self.on_zoom, precedence=1)
+        # self.param.watch(self.reset_zoom, ['x_axis', 'y_axis'], queued=True)
+        # self.plot_resetter.add_subscriber(self.reset, precedence=1)
+
+        self.visible_points.param.watch(self.on_zoom, ["x_range", "y_range"], queued=True)
 
         self.x_min, self.x_max = None, None
         self.y_min, self.y_max = None, None
 
         self.selection_cache = {}
 
-    def reset_zoom(self, event):
-        if event.name == "x_axis":
-            self.x_min, self.x_max = None, None
-        elif event.name == "y_axis":
-            self.y_min, self.y_max = None, None
-        else:
-            raise ValueError(f"Reset zoom event not understood: {event}")
+    def on_zoom(self, *events):
+
+        print("ZOOMING")
+        with hold():
+            for event in events:
+                if event.name == "x_range":
+                    # self.x_lims = event.new
+                    self.x_min, self.x_max = np.array(event.new, dtype=np.float64)
+                elif event.name == "y_range":
+                    # self.y_lims = event.new
+                    self.y_min, self.y_max = np.array(event.new, dtype=np.float64)
+
+    # def reset_zoom(self, event):
+    #     if event.name == "x_axis":
+    #         self.x_min, self.x_max = None, None
+    #     elif event.name == "y_axis":
+    #         self.y_min, self.y_max = None, None
+    #     else:
+    #         raise ValueError(f"Reset zoom event not understood: {event}")
+
+    # def reset(self, resetting):
+    #     self.x_lims = self.param.x_lims.bounds
+    #     # self.y_min, self.y_max = None, None
 
     @property
     def selection_key(self):
@@ -155,21 +176,6 @@ class ActionExample(param.Parameterized):
     def current_axes(self):
         return (self.x_axis, self.y_axis)
 
-    @timedec
-    def on_zoom(self, x_range, y_range):
-        self.x_min, self.x_max = x_min, x_max = x_range
-        self.y_min, self.y_max = y_min, y_max = y_range
-
-        sel = self.current_selection.query(
-            f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
-            f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
-        )
-
-        if len(sel) < self.datashade_when: # Make this configurable?
-            self.datashaded = False
-        else:
-            self.datashaded = True
-
     def flag_selection(self, e):
         if not self.selected_points.index:
             return
@@ -178,33 +184,72 @@ class ActionExample(param.Parameterized):
         sel = self.data.iloc[idxs].iloc[self.selected_points.index]
         self.data.loc[sel.index, "gain_flags"] = 1
 
+    # def get_limits(self, df, column_or_level):
+    #     try:
+    #         values = df[column_or_level]
+    #     except KeyError:
+    #         values = df.index.get_level_values(column_or_level)
+
+    #     return values.min(), values.max()
+
+
     @timedec
     def update_plot(self):
         print("TRIGGERED UPDATE")
-        plot_opts = dict(
-            color='color',
-            height=800,
-            responsive=True,
-            tools=['box_select'],
-            active_tools=['box_select']
-        )
+
         sel = self.current_selection
 
         self.add_derived_columns(sel)
 
+        # if self.x_min is None: 
+        #     self.x_min, self.x_max = self.param.x_lims.bounds
+        #     self.x_lims = self.param.x_lims.bounds
+        # if self.y_min is None: 
+        #     self.y_min, self.y_max = self.param.y_lims.bounds
+        #     self.y_lims = self.param.y_lims.bounds
+
+        # print(self.x_min, self.x_max)
+
+        # if not None in [self.x_min, self.x_max]:  # Limits are set.
+        #     sel = sel.query(
+        #         f"{self.x_min} <= {axis_map[self.x_axis]} <= {self.x_max}"
+        #     )
+            
+        # if not None in [self.y_min, self.y_max]:  # Limits are set.
+        #     sel = sel.query(
+        #         f"{self.y_min} <= {axis_map[self.y_axis]} <= {self.y_max}"
+        #     )
+
         sel["color"] = np.where(sel["gain_flags"], "red", "blue")
 
-        scatter = hv.Scatter(sel, [axis_map[self.x_axis]], [axis_map[self.y_axis], "color"]).opts(**plot_opts)
+        sel = sel.reset_index()  # Workaround - resample when doesn't play nicely with mult-indices.
 
-        self.selected_points.source = scatter
-        self.visible_points.source = scatter
+        plot = sel.hvplot(
+            x=axis_map[self.x_axis],
+            y=axis_map[self.y_axis],
+            kind="scatter",
+            rasterize=True,
+            # dynspread=True,
+            resample_when=10000,
+            tools=['box_select'],
+            hover=False,
+            responsive=True,
+            height=800,
+            logz=True,
+            x_sampling=60  # This needs to be determined from the data.
+        )
+        # # with param.parameterized.discard_events(self.visible_points):
+        # scatter = hv.Scatter(sel, [axis_map[self.x_axis]], [axis_map[self.y_axis], "color"]).opts(**plot_opts, hooks=[self._set_current_zoom])
 
-        if self.datashaded:
-            del plot_opts["color"]
-            plot = datashade(scatter).opts(**plot_opts, hooks=[self._set_current_zoom])
-            # foo.streams[1].update(x_range=(self.x_min, self.x_max), y_range=(self.y_min, self.y_max))
-        else:
-            plot = scatter.opts(hooks=[self._set_current_zoom])
+        # if self.datashaded:
+        #     del plot_opts["color"]
+        #     plot = datashade(scatter).opts(**plot_opts, hooks=[self._set_current_zoom])
+        # else:
+        #     plot = scatter.opts(hooks=[self._set_current_zoom])
+
+        # self.selected_points.source = plot
+        # self.visible_points.source = plot
+        # self.plot_resetter.source = plot
 
         return plot
 
@@ -223,17 +268,19 @@ class ActionExample(param.Parameterized):
         }
 
         for column in missing_columns:
-            print(f"Adding{column}")
             df[column] = func_map[column](df["gains"])
 
-    def _set_current_zoom(self, plot, element):
-        # Access the Bokeh plot object and set zoom range
-        if self.x_min is not None:
-            self.visible_points.update(x_range=(self.x_min, self.x_max), y_range=(self.y_min, self.y_max))
-            plot.state.x_range.start = self.x_min
-            plot.state.x_range.end = self.x_max
-            plot.state.y_range.start = self.y_min
-            plot.state.y_range.end = self.y_max
+    # def _set_current_zoom(self, plot, element):
+    #     # Access the Bokeh plot object and set zoom range
+    #     if self.x_min is not None:
+    #         self.visible_points.update(x_range=(self.x_min, self.x_max), y_range=(self.y_min, self.y_max))
+    #         plot.state.x_range.start = self.x_min
+    #         plot.state.x_range.end = self.x_max
+    #         plot.state.y_range.start = self.y_min
+    #         plot.state.y_range.end = self.y_max
+
+    #     else:
+    #         "IT WAS NONE!"
 
 
 
