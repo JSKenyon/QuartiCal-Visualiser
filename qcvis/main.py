@@ -34,14 +34,7 @@ from daskms.experimental.zarr import xds_from_zarr
 
 pd.options.mode.copy_on_write = True
 
-hv.extension('bokeh', width=100)
-
-# Default values suitable for this notebook
-decimate.max_samples=1000
-dynspread.max_px=20
-dynspread.threshold=0.5
-ResampleOperation2D.width=500
-ResampleOperation2D.height=500
+hv.extension('bokeh', width="stretch_width")
 
 # TODO: Make programmatic + include concatenation when we have mutiple xdss.
 xds = xds_from_zarr("::G")#[:1]
@@ -65,7 +58,7 @@ axis_map = {
     "Imaginary": "imaginary"
 }
 
-class ActionExample(param.Parameterized):
+class GainInspector(param.Parameterized):
 
     # create a button that when pushed triggers 'button'
     antenna = param.Selector(label="Antenna", objects=xds.antenna.values.tolist(), default=xds.antenna.values[0])
@@ -192,9 +185,12 @@ class ActionExample(param.Parameterized):
         for column in missing_columns:
             df[column] = func_map[column](df["gains"])
 
-action_example = ActionExample()
+action_example = GainInspector()
 
-customised_params= pn.Param(action_example.param, widgets={
+customised_params= pn.Param(
+    action_example.param,
+    show_name=False,
+    widgets={
         # 'update': {'visible': False},
         'flag': pn.widgets.Button,
         # 'correlation': pn.widgets.RadioButtonGroup
