@@ -68,8 +68,6 @@ axis_map = {
 class ActionExample(param.Parameterized):
 
     # create a button that when pushed triggers 'button'
-    flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
-    redraw = param.Action(lambda x: x.param.trigger('redraw'), label='REDRAW')
     antenna = param.Selector(label="Antenna", objects=xds.antenna.values.tolist(), default=xds.antenna.values[0])
     direction = param.Selector(label="Direction", objects=xds.direction.values.tolist(), default=xds.direction.values[0])
     correlation = param.Selector(label="Correlation", objects=xds.correlation.values.tolist(), default=xds.correlation.values[0])
@@ -78,6 +76,8 @@ class ActionExample(param.Parameterized):
     datashaded = param.Boolean(label="Datashade", default=True)
     # Set the bounds during the init step.
     datashade_when = param.Integer(label="Datashade limit", bounds=(1, 250000), step=10000, default=10000)
+    flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
+    redraw = param.Action(lambda x: x.param.trigger('redraw'), label='REDRAW')
 
     def __init__(self, **params):
         super().__init__(**params)
