@@ -90,6 +90,8 @@ class GainInspector(param.Parameterized):
     @property
     def selection_key(self):
         return (
+            "x_axis", self.x_axis,
+            "y_axis", self.y_axis,
             "antenna", self.antenna,
             "direction", self.direction,
             "correlation", self.correlation 
@@ -108,7 +110,7 @@ class GainInspector(param.Parameterized):
 
             self.selection_cache = {}  # Empty the cache.
 
-            self.selection_cache[selection_key] = self.data.loc[
+            selection = self.data.loc[
                 (
                     slice(None),
                     slice(None),
@@ -116,7 +118,11 @@ class GainInspector(param.Parameterized):
                     self.direction,
                     self.correlation
                 )
-            ].reset_index()
+            ]
+
+            self.add_derived_columns(selection)
+
+            self.selection_cache[selection_key] = selection.reset_index()
 
         return self.selection_cache[selection_key]
 
@@ -124,18 +130,74 @@ class GainInspector(param.Parameterized):
     def current_axes(self):
         return (self.x_axis, self.y_axis)
 
+    @timedec
     def flag_selection(self, event):
-
-        pn.state.log(f'Flagging triggered.')
-
         if not self.box_edit.data:
             return
 
-        idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
-        sel = self.data.iloc[idxs].iloc[self.selected_points.index]
-        self.data.loc[sel.index, "gain_flags"] = 1
+        corners = self.box_edit.data
 
-        pn.state.log(f'Flagging completed.')
+        for x_min, y_min, x_max, y_max in zip(*corners.values()):
+
+            query = (
+                f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
+                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max} &"
+                f"antenna == @self.antenna &"
+                f"direction == @self.direction"
+            )
+
+            # self.data.loc[self.data.query(query).index, 'gain_flags'] = 1
+
+        # # Get the row indices for the selected points. 
+        # rows = self.data.index.get_locs((slice(x_min, x_max), slice(None), self.antenna, self.direction, self.correlation))
+
+        # # This is currnetly making an assumption - would need to figure this out OTF.
+        # tmp = self.data.amplitude.iloc[rows].reset_index(drop=True)
+
+        # selected = tmp.loc[(tmp.amplitude <= y_max) & (tmp.amplitude >= y_min)]
+
+        # # Rows where all conditions are now met.
+        # valid = rows[selected.index.values] 
+
+        # self.data.loc[self.data.iloc[valid].index, "gain_flags"] = 1
+
+        # We actually want to do this more elegantly. Given the complete data, 
+        # the first step is to determine the indices which produce the currently
+        # active selection i.e. return the indicies which correspond to the 
+        # visible data. From the currently active selection, figure out the
+        # indices of the points wewant to flag. The size of the indices coming
+        # from the full data should match the size of the currenlt active selection.
+        # Fro mthe active selection, can determine the zero indexed indcies of
+        # the points to be flagged. These can be used to figure out the indices
+        # of the rows we need to manipulate in the full data. Finally, we can 
+        # use the indices to update the data. 
+
+        rows = self.data.index.get_locs((slice(None), slice(None), self.antenna, self.direction, self.correlation))
+
+        query = (
+            f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
+            f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
+            # f"antenna == @self.antenna &"
+            # f"direction == @self.direction &"
+            # f"correlation == @self.correlation"
+        )
+
+        flagging_idx = self.current_selection.query(query).index.values
+
+        global_rows = rows[flagging_idx]
+
+        # NOT CURRENTLY WORKING!!!
+        self.data.loc[self.data.iloc[global_rows].index, "gain_flags"] = 1
+        # self.data.iloc[valid] = 1
+
+        # import ipdb; ipdb.set_trace()
+
+        # idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
+        # sel = self.data.iloc[idxs].iloc[self.selected_points.index]
+        # self.data.loc[sel.index, "gain_flags"] = 1
+
+        self.selection_cache = {}
+
 
     @timedec
     def update_plot(self):
@@ -144,9 +206,7 @@ class GainInspector(param.Parameterized):
 
         sel = self.current_selection
 
-        self.add_derived_columns(sel)
-
-        sel["color"] = np.where(sel["gain_flags"], "red", "blue")
+        sel = sel[sel["gain_flags"] != 1]
 
         plot = self.rectangles * sel.hvplot(
             x=axis_map[self.x_axis],
