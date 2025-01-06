@@ -123,6 +123,8 @@ class GainInspector(param.Parameterized):
 
             self.add_derived_columns(selection)
 
+            # NOTE: This is a bit of a hack to work around hvplot not playing
+            # well with multiindexes.
             self.selection_cache[selection_key] = selection.reset_index()
 
         return self.selection_cache[selection_key]
