@@ -188,9 +188,16 @@ class GainInspector(param.Parameterized):
 
             flag_rowids = self.current_selection.query(query).rowid.values
 
+            # TODO: Getting this info from the params may be a bit unholy.
+            corrs = self.param.correlation.objects
+            corr_id = corrs.index(self.correlation)
+
             flag_col_loc = self.data.columns.get_loc('gain_flags')
 
-            self.data.iloc[flag_rowids, flag_col_loc] = 1
+            # Apply the flags along the correlation axis.
+            # TODO: How would you do this along the antenna axis?
+            for i in range(-corr_id, len(corrs) - corr_id):
+                self.data.iloc[flag_rowids + i, flag_col_loc] = 1
 
         self.selection_cache = {}  # Clear the cache.
 
@@ -207,7 +214,7 @@ class GainInspector(param.Parameterized):
         plot = self.rectangles * sel.hvplot.scatter(
             x=axis_map[self.x_axis],
             y=axis_map[self.y_axis],
-            rasterize=self.datashaded,
+            datashade=self.datashaded,
             # dynspread=True,
             resample_when=self.datashade_when if self.datashaded else None,
             hover=False,
