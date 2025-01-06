@@ -107,8 +107,12 @@ class ActionExample(param.Parameterized):
 
         selection_key = self.selection_key
 
+        pn.state.log(f'Querying cache.')
+
         if not selection_key in self.selection_cache:
-            print("Invalidating cache!")
+
+            pn.state.log(f'No cache entry found - fetching data.')
+
             self.selection_cache = {}  # Empty the cache.
 
             self.selection_cache[selection_key] = self.data.loc[
@@ -128,6 +132,9 @@ class ActionExample(param.Parameterized):
         return (self.x_axis, self.y_axis)
 
     def flag_selection(self, event):
+
+        pn.state.log(f'Flagging triggered.')
+
         if not self.box_edit.data:
             return
 
@@ -135,9 +142,12 @@ class ActionExample(param.Parameterized):
         sel = self.data.iloc[idxs].iloc[self.selected_points.index]
         self.data.loc[sel.index, "gain_flags"] = 1
 
+        pn.state.log(f'Flagging completed.')
+
     @timedec
     def update_plot(self):
-        print("TRIGGERED UPDATE")
+
+        pn.state.log(f'Plot update triggered.')
 
         sel = self.current_selection
 
@@ -160,6 +170,8 @@ class ActionExample(param.Parameterized):
             xlabel=self.x_axis,
             ylabel=self.y_axis
         )
+
+        pn.state.log(f'Plot update completed.')
 
         return plot
 
