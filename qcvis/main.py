@@ -119,7 +119,7 @@ class ActionExample(param.Parameterized):
                     self.direction,
                     self.correlation
                 )
-            ]
+            ].reset_index()
 
         return self.selection_cache[selection_key]
 
@@ -144,8 +144,6 @@ class ActionExample(param.Parameterized):
         self.add_derived_columns(sel)
 
         sel["color"] = np.where(sel["gain_flags"], "red", "blue")
-
-        sel = sel.reset_index()  # Workaround - resample when doesn't play nicely with mult-indices.
 
         plot = self.rectangles * sel.hvplot(
             x=axis_map[self.x_axis],
