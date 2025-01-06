@@ -48,6 +48,7 @@ xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
 # xds = xds.compute()
 
 ds = xds[["gains", "gain_flags"]].to_dataframe()
+ds["rowid"] = np.arange(len(ds))  # This is very important.
 
 axis_map = {
     "Time": "gain_time",
@@ -141,62 +142,16 @@ class GainInspector(param.Parameterized):
 
             query = (
                 f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
-                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max} &"
-                f"antenna == @self.antenna &"
-                f"direction == @self.direction"
+                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
             )
 
-            # self.data.loc[self.data.query(query).index, 'gain_flags'] = 1
+            flag_rowids = self.current_selection.query(query).rowid.values
 
-        # # Get the row indices for the selected points. 
-        # rows = self.data.index.get_locs((slice(x_min, x_max), slice(None), self.antenna, self.direction, self.correlation))
+            flag_col_loc = self.data.columns.get_loc('gain_flags')
 
-        # # This is currnetly making an assumption - would need to figure this out OTF.
-        # tmp = self.data.amplitude.iloc[rows].reset_index(drop=True)
+            self.data.iloc[flag_rowids, flag_col_loc] = 1
 
-        # selected = tmp.loc[(tmp.amplitude <= y_max) & (tmp.amplitude >= y_min)]
-
-        # # Rows where all conditions are now met.
-        # valid = rows[selected.index.values] 
-
-        # self.data.loc[self.data.iloc[valid].index, "gain_flags"] = 1
-
-        # We actually want to do this more elegantly. Given the complete data, 
-        # the first step is to determine the indices which produce the currently
-        # active selection i.e. return the indicies which correspond to the 
-        # visible data. From the currently active selection, figure out the
-        # indices of the points wewant to flag. The size of the indices coming
-        # from the full data should match the size of the currenlt active selection.
-        # Fro mthe active selection, can determine the zero indexed indcies of
-        # the points to be flagged. These can be used to figure out the indices
-        # of the rows we need to manipulate in the full data. Finally, we can 
-        # use the indices to update the data. 
-
-        rows = self.data.index.get_locs((slice(None), slice(None), self.antenna, self.direction, self.correlation))
-
-        query = (
-            f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
-            f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
-            # f"antenna == @self.antenna &"
-            # f"direction == @self.direction &"
-            # f"correlation == @self.correlation"
-        )
-
-        flagging_idx = self.current_selection.query(query).index.values
-
-        global_rows = rows[flagging_idx]
-
-        # NOT CURRENTLY WORKING!!!
-        self.data.loc[self.data.iloc[global_rows].index, "gain_flags"] = 1
-        # self.data.iloc[valid] = 1
-
-        # import ipdb; ipdb.set_trace()
-
-        # idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
-        # sel = self.data.iloc[idxs].iloc[self.selected_points.index]
-        # self.data.loc[sel.index, "gain_flags"] = 1
-
-        self.selection_cache = {}
+        self.selection_cache = {}  # Clear the cache.
 
 
     @timedec
@@ -208,10 +163,9 @@ class GainInspector(param.Parameterized):
 
         sel = sel[sel["gain_flags"] != 1]
 
-        plot = self.rectangles * sel.hvplot(
+        plot = self.rectangles * sel.hvplot.scatter(
             x=axis_map[self.x_axis],
             y=axis_map[self.y_axis],
-            kind="scatter",
             rasterize=self.datashaded,
             # dynspread=True,
             resample_when=self.datashade_when if self.datashaded else None,
@@ -263,6 +217,3 @@ pn.template.MaterialTemplate(
     sidebar=customised_params,
     main=[action_example.update_plot],
 ).servable()
-
-
-# myrow = pn.Row(customised_params, action_example.update_plot).servable()
