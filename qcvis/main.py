@@ -119,6 +119,12 @@ class ActionExample(param.Parameterized):
 
         self.selection_cache = {}
 
+        # Empty Rectangles for overlay
+        self.rectangles = hv.Rectangles([])
+
+        # Attach a BoxEdit stream to the Rectangles
+        self.box_edit = streams.BoxEdit(source=self.rectangles)
+
     def on_zoom(self, *events):
 
         print("ZOOMING")
@@ -176,8 +182,8 @@ class ActionExample(param.Parameterized):
     def current_axes(self):
         return (self.x_axis, self.y_axis)
 
-    def flag_selection(self, e):
-        if not self.selected_points.index:
+    def flag_selection(self, event):
+        if not self.box_edit.data:
             return
 
         idxs = self.data.index.get_locs((slice(None), slice(None), self.antenna, 0, self.correlation))
@@ -224,7 +230,7 @@ class ActionExample(param.Parameterized):
 
         sel = sel.reset_index()  # Workaround - resample when doesn't play nicely with mult-indices.
 
-        plot = sel.hvplot(
+        plot = self.rectangles * sel.hvplot(
             x=axis_map[self.x_axis],
             y=axis_map[self.y_axis],
             kind="scatter",
