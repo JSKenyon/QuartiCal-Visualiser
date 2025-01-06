@@ -33,6 +33,7 @@ from timedec import timedec
 from daskms.experimental.zarr import xds_from_zarr
 
 pd.options.mode.copy_on_write = True
+pn.config.throttled = True  # Throttle all sliders.
 
 hv.extension('bokeh', width="stretch_width")
 
@@ -62,16 +63,52 @@ axis_map = {
 class GainInspector(param.Parameterized):
 
     # create a button that when pushed triggers 'button'
-    antenna = param.Selector(label="Antenna", objects=xds.antenna.values.tolist(), default=xds.antenna.values[0])
-    direction = param.Selector(label="Direction", objects=xds.direction.values.tolist(), default=xds.direction.values[0])
-    correlation = param.Selector(label="Correlation", objects=xds.correlation.values.tolist(), default=xds.correlation.values[0])
-    x_axis = param.Selector(label="X Axis", objects=list(axis_map.keys()), default="Time")
-    y_axis = param.Selector(label="Y Axis", objects=list(axis_map.keys()), default="Amplitude")
-    datashaded = param.Boolean(label="Datashade", default=True)
+    antenna = param.Selector(
+        label="Antenna",
+        objects=ds.index.unique(level="antenna").tolist(),
+        default=ds.index.unique(level="antenna").tolist()[0]
+    )
+    direction = param.Selector(
+        label="Direction",
+        objects=ds.index.unique(level="direction").tolist(),
+        default=ds.index.unique(level="direction").tolist()[0]
+    )
+    correlation = param.Selector(
+        label="Correlation",
+        objects=ds.index.unique(level="correlation").tolist(),
+        default=ds.index.unique(level="correlation").tolist()[0]
+    )
+    x_axis = param.Selector(
+        label="X Axis",
+        objects=list(axis_map.keys()),
+        default="Time"
+    )
+    y_axis = param.Selector(
+        label="Y Axis",
+        objects=list(axis_map.keys()),
+        default="Amplitude"
+    )
+    datashaded = param.Boolean(
+        label="Datashade",
+        default=True
+    )
     # Set the bounds during the init step.
-    datashade_when = param.Integer(label="Datashade limit", bounds=(1, 250000), step=10000, default=10000)
-    flag = param.Action(lambda x: x.param.trigger('flag'), label='FLAG')
-    redraw = param.Action(lambda x: x.param.trigger('redraw'), label='REDRAW')
+    datashade_when = param.Integer(
+        label="Datashade limit",
+        bounds=(10000, None),
+        step=10000,
+        default=50000,
+    )
+    pixel_ratio = param.Number(
+        label="Pixel ratio",
+        bounds=(0.1, 2),
+        step=0.05,
+        default=0.25
+    )
+    flag = param.Action(
+        lambda x: x.param.trigger('flag'), 
+        label='FLAG'
+    )
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -87,6 +124,8 @@ class GainInspector(param.Parameterized):
 
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
+
+        self.param.datashade_when.bounds = (10000, len(self.current_selection))
 
     @property
     def selection_key(self):
@@ -174,8 +213,10 @@ class GainInspector(param.Parameterized):
             hover=False,
             responsive=True,
             height=800,
-            logz=True,
-            # x_sampling=60,  # This needs to be determined from the data.
+            # logz=True,
+            # x_sampling=self.minimum_sampling.get(self.x_axis, None),
+            # y_sampling=self.minimum_sampling.get(self.y_axis, None),
+            pixel_ratio=self.pixel_ratio,
             xlabel=self.x_axis,
             ylabel=self.y_axis
         )
