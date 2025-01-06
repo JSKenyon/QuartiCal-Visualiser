@@ -158,7 +158,9 @@ class ActionExample(param.Parameterized):
             responsive=True,
             height=800,
             logz=True,
-            x_sampling=60  # This needs to be determined from the data.
+            # x_sampling=60,  # This needs to be determined from the data.
+            xlabel=self.x_axis,
+            ylabel=self.y_axis
         )
 
         return plot
@@ -184,8 +186,17 @@ action_example = ActionExample()
 
 customised_params= pn.Param(action_example.param, widgets={
         # 'update': {'visible': False},
-        'flag': pn.widgets.Button
+        'flag': pn.widgets.Button,
+        # 'correlation': pn.widgets.RadioButtonGroup
     }
 )
 
-myrow = pn.Row(customised_params, action_example.update_plot).servable()
+pn.template.MaterialTemplate(
+    # site="Panel",
+    title="QuartiCal-Visualiser",
+    sidebar=customised_params,
+    main=[action_example.update_plot],
+).servable()
+
+
+# myrow = pn.Row(customised_params, action_example.update_plot).servable()
