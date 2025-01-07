@@ -177,35 +177,23 @@ class GainInspector(param.Parameterized):
     def current_axes(self):
         return (self.x_axis, self.y_axis)
 
-    def broadcast_rowids(self, rowids, all_antennas=False):
+    def flags_from_rowids(self, rowids, all_antennas=False):
 
-        corrs = self.param.correlation.objects
-        n_corr = len(corrs)
-        n_dir = len(self.param.direction.objects)
+        n_corr = len(self.data.index.unique(level="correlation"))
 
-        stride = n_dir * n_corr  # TODO: Currently flags all directions.
+        flags = np.zeros_like(self.data.gain_flags)
 
-        output_size = len(rowids) * n_corr
+        flags[rowids] = 1  # New flags.
 
-        if all_antennas:
-            antennas = self.param.antenna.objects
-            n_ant = len(antennas)
-            ant_id = antennas.index(self.antenna)
-            output_size *= n_ant
-        else:
-            n_ant, ant_id = 1, 0 
+        array_shape = xds.gain_flags.shape + (n_corr,)
+        array_flags = flags.reshape(array_shape)
 
-        output_rowids = np.zeros(output_size, dtype=np.int64)
+        or_axes = (-1, -3) if all_antennas else -1
 
-        start = -ant_id * stride
-        stop = stride * (n_ant - ant_id)
+        array_flags = array_flags.any(axis=or_axes, keepdims=True)
+        array_flags = np.broadcast_to(array_flags, array_shape)
 
-        for i, rowid in enumerate(rowids):
-            output_i = i * stride * n_ant
-            for i_off, r_off  in enumerate(range(start, stop)):
-                output_rowids[output_i + i_off] = rowid + r_off
-
-        return output_rowids
+        return array_flags.ravel().astype(np.int8)
 
     @timedec
     def flag_selection(self, event):
@@ -223,14 +211,12 @@ class GainInspector(param.Parameterized):
 
             flag_rowids = self.current_selection.query(query).rowid.values
 
-            flag_rowids = self.broadcast_rowids(
+            flag_update = self.flags_from_rowids(
                 flag_rowids,
                 all_antennas=True if event.name == "flag_antennas" else False
             )
 
-            flag_col_loc = self.data.columns.get_loc('gain_flags')
-
-            self.data.iloc[flag_rowids, flag_col_loc] = 1
+            self.data.gain_flags |= flag_update
 
         self.selection_cache = {}  # Clear the cache.
 
