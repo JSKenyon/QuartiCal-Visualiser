@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import xarray
+import dask.array as da
 
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
@@ -30,7 +31,7 @@ import panel.widgets as pnw
 
 from timedec import timedec
 
-from daskms.experimental.zarr import xds_from_zarr
+from daskms.experimental.zarr import xds_from_zarr, xds_to_zarr
 
 pd.options.mode.copy_on_write = True
 pn.config.throttled = True  # Throttle all sliders.
@@ -38,9 +39,9 @@ pn.config.throttled = True  # Throttle all sliders.
 hv.extension('bokeh', width="stretch_width")
 
 # TODO: Make programmatic + include concatenation when we have mutiple xdss.
-xds = xds_from_zarr("::G")#[:1]
+xdsl = xds_from_zarr("::G")#[:1]
 
-xds = [x[["gains", "gain_flags"]] for x in xds]
+xds = [x[["gains", "gain_flags"]] for x in xdsl]
 
 directory_contents = Path.cwd().glob("*")
 
@@ -113,6 +114,10 @@ class GainInspector(param.Parameterized):
         lambda x: x.param.trigger('flag'), 
         label='FLAG'
     )
+    save = param.Action(
+        lambda x: x.param.trigger('save'), 
+        label='SAVE'
+    )
 
     def __init__(self, **params):
         super().__init__(**params)
@@ -121,6 +126,7 @@ class GainInspector(param.Parameterized):
  
         self.param.watch(self.flag_selection, ['flag'], queued=True)
         self.param.watch(self.flag_selection, ['flag_antennas'], queued=True)
+        self.param.watch(self.write_flags, ['save'], queued=True)
 
         self.selection_cache = {}
 
@@ -141,6 +147,43 @@ class GainInspector(param.Parameterized):
             "direction", self.direction,
             "correlation", self.correlation 
         )
+
+    def write_flags(self, event):
+
+        n_corr = len(self.data.index.unique(level="correlation"))
+
+        flags = self.data.gain_flags.values.copy()
+
+        array_shape = xds.gain_flags.shape + (n_corr,)
+        array_flags = flags.reshape(array_shape) 
+        array_flags = array_flags[..., 0]  # No correlation axis in the gains.
+
+        offset = 0
+
+        output_xdsl = []
+
+        for _xds in xdsl:
+
+            n_time = _xds.sizes["gain_time"]
+
+            updated_xds = _xds.assign(
+                {
+                    "gain_flags": (
+                        _xds.gain_flags.dims,
+                        da.from_array(array_flags[offset: offset + n_time])
+                    )
+                }
+            )
+
+            offset += n_time
+
+            output_xdsl.append(updated_xds)
+
+        # TODO: This needs to use the actual input path.
+        writes = xds_to_zarr(output_xdsl, "::G", columns="gain_flags", rechunk=True)
+
+        da.compute(writes)
+
 
     @property
     def current_selection(self):
