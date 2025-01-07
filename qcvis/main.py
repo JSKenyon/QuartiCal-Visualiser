@@ -88,13 +88,13 @@ class GainInspector(param.Parameterized):
         objects=list(axis_map.keys()),
         default="Amplitude"
     )
-    datashaded = param.Boolean(
-        label="Datashade",
+    rasterized = param.Boolean(
+        label="Rasterize",
         default=True
     )
     # Set the bounds during the init step.
-    datashade_when = param.Integer(
-        label="Datashade limit",
+    rasterize_when = param.Integer(
+        label="Rasterize Limit",
         bounds=(10000, None),
         step=10000,
         default=50000,
@@ -104,6 +104,10 @@ class GainInspector(param.Parameterized):
         bounds=(0.1, 2),
         step=0.05,
         default=0.25
+    )
+    flag_antennas = param.Action(
+        lambda x: x.param.trigger('flag_antennas'), 
+        label='FLAG (ALL ANTENNAS)'
     )
     flag = param.Action(
         lambda x: x.param.trigger('flag'), 
@@ -116,6 +120,7 @@ class GainInspector(param.Parameterized):
         self.data = ds  # Make this an argument.
  
         self.param.watch(self.flag_selection, ['flag'], queued=True)
+        self.param.watch(self.flag_selection, ['flag_antennas'], queued=True)
 
         self.selection_cache = {}
 
@@ -125,7 +130,7 @@ class GainInspector(param.Parameterized):
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
-        self.param.datashade_when.bounds = (10000, len(self.current_selection))
+        self.param.rasterize_when.bounds = (10000, len(self.current_selection))
 
     @property
     def selection_key(self):
@@ -172,6 +177,36 @@ class GainInspector(param.Parameterized):
     def current_axes(self):
         return (self.x_axis, self.y_axis)
 
+    def broadcast_rowids(self, rowids, all_antennas=False):
+
+        corrs = self.param.correlation.objects
+        n_corr = len(corrs)
+        n_dir = len(self.param.direction.objects)
+
+        stride = n_dir * n_corr  # TODO: Currently flags all directions.
+
+        output_size = len(rowids) * n_corr
+
+        if all_antennas:
+            antennas = self.param.antenna.objects
+            n_ant = len(antennas)
+            ant_id = antennas.index(self.antenna)
+            output_size *= n_ant
+        else:
+            n_ant, ant_id = 1, 0 
+
+        output_rowids = np.zeros(output_size, dtype=np.int64)
+
+        start = -ant_id * stride
+        stop = stride * (n_ant - ant_id)
+
+        for i, rowid in enumerate(rowids):
+            output_i = i * stride * n_ant
+            for i_off, r_off  in enumerate(range(start, stop)):
+                output_rowids[output_i + i_off] = rowid + r_off
+
+        return output_rowids
+
     @timedec
     def flag_selection(self, event):
         if not self.box_edit.data:
@@ -188,16 +223,14 @@ class GainInspector(param.Parameterized):
 
             flag_rowids = self.current_selection.query(query).rowid.values
 
-            # TODO: Getting this info from the params may be a bit unholy.
-            corrs = self.param.correlation.objects
-            corr_id = corrs.index(self.correlation)
+            flag_rowids = self.broadcast_rowids(
+                flag_rowids,
+                all_antennas=True if event.name == "flag_antennas" else False
+            )
 
             flag_col_loc = self.data.columns.get_loc('gain_flags')
 
-            # Apply the flags along the correlation axis.
-            # TODO: How would you do this along the antenna axis?
-            for i in range(-corr_id, len(corrs) - corr_id):
-                self.data.iloc[flag_rowids + i, flag_col_loc] = 1
+            self.data.iloc[flag_rowids, flag_col_loc] = 1
 
         self.selection_cache = {}  # Clear the cache.
 
@@ -214,9 +247,9 @@ class GainInspector(param.Parameterized):
         plot = self.rectangles * sel.hvplot.scatter(
             x=axis_map[self.x_axis],
             y=axis_map[self.y_axis],
-            datashade=self.datashaded,
+            rasterize=self.rasterized,
             # dynspread=True,
-            resample_when=self.datashade_when if self.datashaded else None,
+            resample_when=self.rasterize_when if self.rasterized else None,
             hover=False,
             responsive=True,
             height=800,
@@ -256,7 +289,12 @@ customised_params= pn.Param(
     show_name=False,
     widgets={
         # 'update': {'visible': False},
-        'flag': pn.widgets.Button,
+        'flag': {
+            "type": pn.widgets.Button,
+            "description": (
+                "Flag gain solutions corresponding to selected regions."
+            )
+        },
         # 'correlation': pn.widgets.RadioButtonGroup
     }
 )
