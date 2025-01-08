@@ -99,17 +99,19 @@ class DataManager(object):
     def set_otf_columns(self, *columns):
         self.otf_columns = columns
 
-    # @cached(
-    #     cache=LRUCache(maxsize=16),
-    #     key=lambda self, otf_columns=[]: hashkey(
-    #         tuple(otf_columns),
-    #         tuple(list(coords.items()))
-    #     )
-    # )
+    @cached(
+        cache=LRUCache(maxsize=16),
+        key=lambda self: hashkey(
+            tuple(self.otf_columns),
+            tuple([None if isinstance(l, slice) else l for l in self.locator])
+        )
+    )
     def get_selection(self):
 
         selection = self.dataframe.loc[self.locator]
 
+        # Add supported otf columns e.g. amplitude. TODO: These should have
+        # a condifurable target rather than defaulting to the gains.
         for column in self.otf_columns:
             otf_func = self.otf_column_map[column]
             selection[column] = otf_func(selection.gains)
