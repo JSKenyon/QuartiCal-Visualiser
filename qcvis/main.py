@@ -49,6 +49,13 @@ axis_map = {
 
 class DataManager(object):
 
+    otf_column_map = {
+        "amplitude": np.abs,
+        "phase": lambda arr: np.rad2deg(np.angle(arr)),
+        "real": np.real,
+        "imaginary": np.imag
+    }
+
     def __init__(self, path, fields=["gains", "gain_flags"]):
 
         self.path = path
@@ -70,6 +77,34 @@ class DataManager(object):
         self.n_dir = len(self.directions)
         self.correlations = self.consolidated_dataset.correlation.values
         self.n_corr = len(self.correlations)
+
+    @pn.cache(max_items=1, policy='LRU')
+    def get_selection(self, otf_columns=None, **coords):
+
+        otf_columns = otf_columns or set()
+
+        if not isinstance(otf_columns, (list, set)):
+            raise ValueError("otf_columns must be a list or a set.")
+
+        dataframe_columns = self.dataframe.columns.tolist()
+        index_levels = self.dataframe.index.names
+
+        locator = tuple([coords.get(i, slice(None)) for i in index_levels])
+
+        selection = self.dataframe.loc[locator]
+
+        required_columns = set(otf_columns) 
+        available_columns = set(dataframe_columns + index_levels)
+        missing_columns = required_columns - available_columns
+
+        for column in missing_columns:
+            otf_func = self.otf_column_map[column]
+            selection[column] = otf_func(selection.gains)
+
+        # NOTE: This is a bit of a hack to work around hvplot not playing
+        # well with multiindexes. 
+        return selection.reset_index()
+
 
     def write_flags(self):
         # TODO: This is likely flawed for multiple spectral windows.
@@ -206,37 +241,16 @@ class GainInspector(param.Parameterized):
     @property
     def current_selection(self):
 
-        selection_key = self.selection_key
+        pn.state.log(f'Attempting to fetch data - checking cache.')
 
-        pn.state.log(f'Querying cache.')
+        selection = self.dm.get_selection(
+            otf_columns={axis_map[self.x_axis], axis_map[self.y_axis]},
+            antenna=self.antenna,
+            direction=self.direction,
+            correlation=self.correlation
+        )
 
-        if not selection_key in self.selection_cache:
-
-            pn.state.log(f'No cache entry found - fetching data.')
-
-            self.selection_cache = {}  # Empty the cache.
-
-            selection = self.data.loc[
-                (
-                    slice(None),
-                    slice(None),
-                    self.antenna,
-                    self.direction,
-                    self.correlation
-                )
-            ]
-
-            self.add_derived_columns(selection)
-
-            # NOTE: This is a bit of a hack to work around hvplot not playing
-            # well with multiindexes.
-            self.selection_cache[selection_key] = selection.reset_index()
-
-        return self.selection_cache[selection_key]
-
-    @property
-    def current_axes(self):
-        return (self.x_axis, self.y_axis)
+        return selection
 
     def flags_from_rowids(self, rowids, all_antennas=False):
 
@@ -311,23 +325,6 @@ class GainInspector(param.Parameterized):
         pn.state.log(f'Plot update completed.')
 
         return plot
-
-    def add_derived_columns(self, df):
-        required_columns = {axis_map[k] for k in [self.x_axis, self.y_axis]}
-
-        available_columns = set(df.columns.to_list() + df.index.names)
-
-        missing_columns = required_columns - available_columns
-
-        func_map = {
-            "amplitude": np.abs,
-            "phase": lambda arr: np.rad2deg(np.angle(arr)),
-            "real": np.real,
-            "imaginary": np.imag
-        }
-
-        for column in missing_columns:
-            df[column] = func_map[column](df["gains"])
 
 action_example = GainInspector("::G")
 
