@@ -33,7 +33,7 @@ from timedec import timedec
 
 from daskms.experimental.zarr import xds_from_zarr, xds_to_zarr
 
-from cachetools import cached
+from cachetools import cached, LRUCache
 from cachetools.keys import hashkey
 
 pd.options.mode.copy_on_write = True
@@ -81,9 +81,13 @@ class DataManager(object):
         self.correlations = self.consolidated_dataset.correlation.values
         self.n_corr = len(self.correlations)
 
-        # Implement a very basic cache.
-        self.cache = {}
-
+    @cached(
+        cache=LRUCache(maxsize=16),
+        key=lambda self, otf_columns=[], **coords: hashkey(
+            tuple(otf_columns),
+            tuple(list(coords.items()))
+        )
+    )
     def get_selection(self, otf_columns=[], **coords):
 
         if not isinstance(otf_columns, list):
@@ -91,11 +95,6 @@ class DataManager(object):
 
         dataframe_columns = self.dataframe.columns.tolist()
         index_levels = self.dataframe.index.names
-
-        cache_key = (*otf_columns, *list(coords.items()))
-
-        if cache_key in self.cache:
-            return self.cache[cache_key]
 
         locator = tuple([coords.get(i, slice(None)) for i in index_levels])
 
@@ -109,12 +108,7 @@ class DataManager(object):
             otf_func = self.otf_column_map[column]
             selection[column] = otf_func(selection.gains)
 
-        self.cache[cache_key] = selection.reset_index()
-
-        # NOTE: This is a bit of a hack to work around hvplot not playing
-        # well with multiindexes. 
-        return self.cache[cache_key]
-
+        return selection.reset_index()
 
     def write_flags(self):
         # TODO: This is likely flawed for multiple spectral windows.
@@ -303,7 +297,7 @@ class GainInspector(param.Parameterized):
 
             self.data.gain_flags |= flag_update
 
-        self.dm.cache = {}  # Clear the cache.
+        self.dm.get_selection.cache_clear()
 
 
     @timedec
