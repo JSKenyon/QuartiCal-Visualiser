@@ -219,25 +219,12 @@ class GainInspector(param.Parameterized):
         self.param.watch(self.flag_selection, ['flag_antennas'], queued=True)
         self.param.watch(self.write_flags, ['save'], queued=True)
 
-        self.selection_cache = {}
-
         # Empty Rectangles for overlay
         self.rectangles = hv.Rectangles([])
-
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
         self.param.rasterize_when.bounds = (10000, len(self.current_selection))
-
-    @property
-    def selection_key(self):
-        return (
-            "x_axis", self.x_axis,
-            "y_axis", self.y_axis,
-            "antenna", self.antenna,
-            "direction", self.direction,
-            "correlation", self.correlation
-        )
 
     def write_flags(self, event):
         self.dm.write_flags()
@@ -297,7 +284,7 @@ class GainInspector(param.Parameterized):
 
             self.data.gain_flags |= flag_update
 
-        self.dm.get_selection.cache_clear()
+        self.dm.get_selection.cache_clear()  # Invalidate cache.
 
 
     @timedec
