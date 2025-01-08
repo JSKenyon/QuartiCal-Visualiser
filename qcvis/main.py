@@ -73,6 +73,13 @@ class DataManager(object):
         # Add a rowid column to the dataframe to simplify later operations.
         self.dataframe["rowid"] = np.arange(len(self.dataframe))
 
+        # Initialise data selection - defaults to all data.
+        index_levels = self.dataframe.index.names
+        self.locator = tuple([slice(None) for _ in index_levels])
+
+        # Initialise columns which should be added on the fly.
+        self.otf_columns = []
+
     def get_coord_values(self, dim_name):
         if not isinstance(dim_name, str):
             raise ValueError("dim_name expects a string.")
@@ -83,34 +90,31 @@ class DataManager(object):
             raise ValueError("dim_name expects a string.")
         return self.consolidated_dataset.sizes[dim_name]
 
-    @cached(
-        cache=LRUCache(maxsize=16),
-        key=lambda self, otf_columns=[], **coords: hashkey(
-            tuple(otf_columns),
-            tuple(list(coords.items()))
-        )
-    )
-    def get_selection(self, otf_columns=[], **coords):
-
-        if not isinstance(otf_columns, list):
-            raise ValueError("otf_columns must be a list.")
-
-        dataframe_columns = self.dataframe.columns.tolist()
+    def set_selection(self, **selections):
         index_levels = self.dataframe.index.names
+        self.locator = tuple(
+            [selections.get(i, slice(None)) for i in index_levels]
+        )
 
-        locator = tuple([coords.get(i, slice(None)) for i in index_levels])
+    def set_otf_columns(self, *columns):
+        self.otf_columns = columns
 
-        selection = self.dataframe.loc[locator]
+    # @cached(
+    #     cache=LRUCache(maxsize=16),
+    #     key=lambda self, otf_columns=[]: hashkey(
+    #         tuple(otf_columns),
+    #         tuple(list(coords.items()))
+    #     )
+    # )
+    def get_selection(self):
 
-        required_columns = set(otf_columns) 
-        available_columns = set(dataframe_columns + index_levels)
-        missing_columns = required_columns - available_columns
+        selection = self.dataframe.loc[self.locator]
 
-        for column in missing_columns:
+        for column in self.otf_columns:
             otf_func = self.otf_column_map[column]
             selection[column] = otf_func(selection.gains)
 
-        return selection.reset_index()
+        return selection.reset_index()  # Reset to satisfy hvplot - irritating!
 
     def write_flags(self):
         # TODO: This is likely flawed for multiple spectral windows.
@@ -217,9 +221,33 @@ class GainInspector(param.Parameterized):
 
         super().__init__(**params)
 
+        # Configure initial selection.
+        self.dm.set_selection(
+            antenna=self.antenna,
+            direction=self.direction,
+            correlation=self.correlation
+        )
+
+        # Ensure that amplitude is added to data on init.
+        self.dm.set_otf_columns("amplitude")
+
         self.param.watch(self.flag_selection, ['flag'], queued=True)
         self.param.watch(self.flag_selection, ['flag_antennas'], queued=True)
         self.param.watch(self.write_flags, ['save'], queued=True)
+
+        # Automatically update data selection when these fields change.
+        self.param.watch(
+            self.update_selection,
+            ['antenna', 'direction', 'correlation'],
+            queued=True
+        )
+
+        # Automatically update on-the-fly columns when these fields change.
+        self.param.watch(
+            self.update_otf_columns,
+            ['x_axis', 'y_axis'],
+            queued=True
+        )
 
         # Empty Rectangles for overlay
         self.rectangles = hv.Rectangles([])
@@ -231,17 +259,28 @@ class GainInspector(param.Parameterized):
     def write_flags(self, event):
         self.dm.write_flags()
 
-    @property
-    def current_selection(self):
-
-        selection = self.dm.get_selection(
-            otf_columns=[axis_map[self.x_axis], axis_map[self.y_axis]],
+    def update_selection(self, event):
+        self.dm.set_selection(
             antenna=self.antenna,
             direction=self.direction,
             correlation=self.correlation
         )
 
-        return selection
+    def update_otf_columns(self, event):
+        self.dm.set_otf_columns(
+            *[
+                axis_map[ax] for ax in self.current_axes 
+                if axis_map[ax] in self.dm.otf_column_map
+            ]
+        )
+
+    @property
+    def current_axes(self):
+        return [self.x_axis, self.y_axis]
+
+    @property
+    def current_selection(self):
+        return self.dm.get_selection()
 
     def flags_from_rowids(self, rowids, all_antennas=False):
 
