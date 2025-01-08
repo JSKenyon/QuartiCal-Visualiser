@@ -33,6 +33,9 @@ from timedec import timedec
 
 from daskms.experimental.zarr import xds_from_zarr, xds_to_zarr
 
+from cachetools import cached
+from cachetools.keys import hashkey
+
 pd.options.mode.copy_on_write = True
 pn.config.throttled = True  # Throttle all sliders.
 
@@ -78,16 +81,21 @@ class DataManager(object):
         self.correlations = self.consolidated_dataset.correlation.values
         self.n_corr = len(self.correlations)
 
-    @pn.cache(max_items=1, policy='LRU')
-    def get_selection(self, otf_columns=None, **coords):
+        # Implement a very basic cache.
+        self.cache = {}
 
-        otf_columns = otf_columns or set()
+    def get_selection(self, otf_columns=[], **coords):
 
-        if not isinstance(otf_columns, (list, set)):
-            raise ValueError("otf_columns must be a list or a set.")
+        if not isinstance(otf_columns, list):
+            raise ValueError("otf_columns must be a list.")
 
         dataframe_columns = self.dataframe.columns.tolist()
         index_levels = self.dataframe.index.names
+
+        cache_key = (*otf_columns, *list(coords.items()))
+
+        if cache_key in self.cache:
+            return self.cache[cache_key]
 
         locator = tuple([coords.get(i, slice(None)) for i in index_levels])
 
@@ -101,9 +109,11 @@ class DataManager(object):
             otf_func = self.otf_column_map[column]
             selection[column] = otf_func(selection.gains)
 
+        self.cache[cache_key] = selection.reset_index()
+
         # NOTE: This is a bit of a hack to work around hvplot not playing
         # well with multiindexes. 
-        return selection.reset_index()
+        return self.cache[cache_key]
 
 
     def write_flags(self):
@@ -244,7 +254,7 @@ class GainInspector(param.Parameterized):
         pn.state.log(f'Attempting to fetch data - checking cache.')
 
         selection = self.dm.get_selection(
-            otf_columns={axis_map[self.x_axis], axis_map[self.y_axis]},
+            otf_columns=[axis_map[self.x_axis], axis_map[self.y_axis]],
             antenna=self.antenna,
             direction=self.direction,
             correlation=self.correlation
@@ -293,7 +303,7 @@ class GainInspector(param.Parameterized):
 
             self.data.gain_flags |= flag_update
 
-        self.selection_cache = {}  # Clear the cache.
+        self.dm.cache = {}  # Clear the cache.
 
 
     @timedec
