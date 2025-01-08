@@ -73,13 +73,15 @@ class DataManager(object):
         # Add a rowid column to the dataframe to simplify later operations.
         self.dataframe["rowid"] = np.arange(len(self.dataframe))
 
-        # Coordinates and the sizes.
-        self.antennas = self.consolidated_dataset.antenna.values
-        self.n_ant = len(self.antennas)
-        self.directions = self.consolidated_dataset.direction.values
-        self.n_dir = len(self.directions)
-        self.correlations = self.consolidated_dataset.correlation.values
-        self.n_corr = len(self.correlations)
+    def get_coord_values(self, dim_name):
+        if not isinstance(dim_name, str):
+            raise ValueError("dim_name expects a string.")
+        return self.consolidated_dataset[dim_name].values
+        
+    def get_dim_size(self, dim_name):
+        if not isinstance(dim_name, str):
+            raise ValueError("dim_name expects a string.")
+        return self.consolidated_dataset.sizes[dim_name]
 
     @cached(
         cache=LRUCache(maxsize=16),
@@ -204,14 +206,14 @@ class GainInspector(param.Parameterized):
         self.dm = DataManager(path)
         self.data = self.dm.dataframe
 
-        self.param.antenna.objects = self.dm.antennas
-        self.param.antenna.default = self.dm.antennas[0]
+        self.param.antenna.objects = self.dm.get_coord_values("antenna")
+        self.param.antenna.default = self.param.antenna.objects[0]
         
-        self.param.direction.objects = self.dm.directions
-        self.param.direction.default = self.dm.directions[0]
+        self.param.direction.objects = self.dm.get_coord_values("direction")
+        self.param.direction.default = self.param.direction.objects[0]
 
-        self.param.correlation.objects = self.dm.correlations
-        self.param.correlation.default = self.dm.correlations[0]
+        self.param.correlation.objects = self.dm.get_coord_values("correlation")
+        self.param.correlation.default = self.param.correlation.objects[0]
 
         super().__init__(**params)
 
@@ -231,8 +233,6 @@ class GainInspector(param.Parameterized):
 
     @property
     def current_selection(self):
-
-        pn.state.log(f'Attempting to fetch data - checking cache.')
 
         selection = self.dm.get_selection(
             otf_columns=[axis_map[self.x_axis], axis_map[self.y_axis]],
