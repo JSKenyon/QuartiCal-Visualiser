@@ -90,15 +90,16 @@ class DataManager(object):
             raise ValueError("dim_name expects a string.")
         return self.consolidated_dataset.sizes[dim_name]
 
+    def set_otf_columns(self, *columns):
+        self.otf_columns = columns
+
     def set_selection(self, **selections):
         index_levels = self.dataframe.index.names
         self.locator = tuple(
             [selections.get(i, slice(None)) for i in index_levels]
         )
 
-    def set_otf_columns(self, *columns):
-        self.otf_columns = columns
-
+    @timedec
     @cached(
         cache=LRUCache(maxsize=16),
         key=lambda self: hashkey(
@@ -117,6 +118,29 @@ class DataManager(object):
             selection[column] = otf_func(selection.gains)
 
         return selection.reset_index()  # Reset to satisfy hvplot - irritating!
+
+    @timedec
+    def flag_selection(self, query, dims=["correlation"]):
+        
+        rowids = self.get_selection().query(query).rowid.values
+
+        n_corr = self.get_dim_size("correlation")
+
+        flags = np.zeros_like(self.dataframe.gain_flags)
+
+        flags[rowids] = 1  # New flags.
+
+        array_shape = self.consolidated_dataset.gain_flags.shape + (n_corr,)
+        array_flags = flags.reshape(array_shape)
+
+        df_dims = self.dataframe.index.names
+        or_axes = tuple([df_dims.index(dim) for dim in dims]) 
+
+        array_flags = array_flags.any(axis=or_axes, keepdims=True)
+        array_flags = np.broadcast_to(array_flags, array_shape)
+
+        self.dataframe.gain_flags |= array_flags.ravel().astype(np.int8)
+
 
     def write_flags(self):
         # TODO: This is likely flawed for multiple spectral windows.
@@ -233,8 +257,12 @@ class GainInspector(param.Parameterized):
         # Ensure that amplitude is added to data on init.
         self.dm.set_otf_columns("amplitude")
 
-        self.param.watch(self.flag_selection, ['flag'], queued=True)
-        self.param.watch(self.flag_selection, ['flag_antennas'], queued=True)
+        self.param.watch(
+            self.update_flags,
+            ['flag', 'flag_antennas'],
+            queued=True
+        )
+
         self.param.watch(self.write_flags, ['save'], queued=True)
 
         # Automatically update data selection when these fields change.
@@ -257,6 +285,29 @@ class GainInspector(param.Parameterized):
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
         self.param.rasterize_when.bounds = (10000, len(self.current_selection))
+
+    def update_flags(self, event):
+
+        if not self.box_edit.data:  # Nothing has been flagged.
+            return
+
+        corners = self.box_edit.data
+
+        for x_min, y_min, x_max, y_max in zip(*corners.values()):
+
+            query = (
+                f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
+                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
+            )
+
+            flag_axes = ["correlation"]
+
+            if event.name == "flag_antennas":
+                flag_axes.append("antenna")
+
+            self.dm.flag_selection(query, flag_axes)
+
+        self.dm.get_selection.cache_clear()  # Invalidate cache.
 
     def write_flags(self, event):
         self.dm.write_flags()
@@ -283,50 +334,6 @@ class GainInspector(param.Parameterized):
     @property
     def current_selection(self):
         return self.dm.get_selection()
-
-    def flags_from_rowids(self, rowids, all_antennas=False):
-
-        n_corr = self.dm.n_corr
-
-        flags = np.zeros_like(self.data.gain_flags)
-
-        flags[rowids] = 1  # New flags.
-
-        array_shape = self.dm.consolidated_dataset.gain_flags.shape + (n_corr,)
-        array_flags = flags.reshape(array_shape)
-
-        or_axes = (-1, -3) if all_antennas else -1
-
-        array_flags = array_flags.any(axis=or_axes, keepdims=True)
-        array_flags = np.broadcast_to(array_flags, array_shape)
-
-        return array_flags.ravel().astype(np.int8)
-
-    @timedec
-    def flag_selection(self, event):
-        if not self.box_edit.data:
-            return
-
-        corners = self.box_edit.data
-
-        for x_min, y_min, x_max, y_max in zip(*corners.values()):
-
-            query = (
-                f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
-                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
-            )
-
-            flag_rowids = self.current_selection.query(query).rowid.values
-
-            flag_update = self.flags_from_rowids(
-                flag_rowids,
-                all_antennas=True if event.name == "flag_antennas" else False
-            )
-
-            self.data.gain_flags |= flag_update
-
-        self.dm.get_selection.cache_clear()  # Invalidate cache.
-
 
     @timedec
     def update_plot(self):
