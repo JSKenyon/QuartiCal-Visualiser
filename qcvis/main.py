@@ -38,20 +38,6 @@ pn.config.throttled = True  # Throttle all sliders.
 
 hv.extension('bokeh', width="stretch_width")
 
-# TODO: Make programmatic + include concatenation when we have mutiple xdss.
-xdsl = xds_from_zarr("::G")#[:1]
-
-xds = [x[["gains", "gain_flags"]] for x in xdsl]
-
-directory_contents = Path.cwd().glob("*")
-
-xds = timedec(xarray.combine_by_coords)(xds, combine_attrs="drop_conflicts")
-
-# xds = xds.compute()
-
-ds = xds[["gains", "gain_flags"]].to_dataframe()
-ds["rowid"] = np.arange(len(ds))  # This is very important.
-
 axis_map = {
     "Time": "gain_time",
     "Frequency": "gain_freq",
@@ -61,23 +47,78 @@ axis_map = {
     "Imaginary": "imaginary"
 }
 
+class DataManager(object):
+
+    def __init__(self, path, fields=["gains", "gain_flags"]):
+
+        self.path = path
+        # The datasets are lazily evaluated - inexpensive to hold onto them.
+        self.datasets = xds_from_zarr(self.path)
+        self.consolidated_dataset = xarray.combine_by_coords(
+            self.datasets,
+            combine_attrs="drop_conflicts"
+        )
+        # Eagerly evaluated on conversion to pandas dataframe.
+        self.dataframe = self.consolidated_dataset[fields].to_dataframe()
+        # Add a rowid column to the dataframe to simplify later operations.
+        self.dataframe["rowid"] = np.arange(len(self.dataframe))
+
+        # Coordinates and the sizes.
+        self.antennas = self.consolidated_dataset.antenna.values
+        self.n_ant = len(self.antennas)
+        self.directions = self.consolidated_dataset.direction.values
+        self.n_dir = len(self.directions)
+        self.correlations = self.consolidated_dataset.correlation.values
+        self.n_corr = len(self.correlations)
+
+    def write_flags(self):
+        # TODO: This is likely flawed for multiple spectral windows.
+        flags = self.dataframe.gain_flags.values[::self.n_corr].copy()
+
+        array_shape = self.consolidated_dataset.gain_flags.shape
+        array_flags = flags.reshape(array_shape)
+
+        offset = 0
+
+        output_xdsl = []
+
+        for ds in self.datasets:
+
+            n_time = ds.sizes["gain_time"]
+
+            updated_xds = ds.assign(
+                {
+                    "gain_flags": (
+                        ds.gain_flags.dims,
+                        da.from_array(array_flags[offset: offset + n_time])
+                    )
+                }
+            )
+
+            offset += n_time
+
+            output_xdsl.append(updated_xds)
+
+        writes = xds_to_zarr(
+            output_xdsl,
+            self.path,
+            columns="gain_flags",
+            rechunk=True
+        )
+
+        da.compute(writes)
+
+
 class GainInspector(param.Parameterized):
 
-    # create a button that when pushed triggers 'button'
     antenna = param.Selector(
         label="Antenna",
-        objects=ds.index.unique(level="antenna").tolist(),
-        default=ds.index.unique(level="antenna").tolist()[0]
     )
     direction = param.Selector(
         label="Direction",
-        objects=ds.index.unique(level="direction").tolist(),
-        default=ds.index.unique(level="direction").tolist()[0]
     )
     correlation = param.Selector(
         label="Correlation",
-        objects=ds.index.unique(level="correlation").tolist(),
-        default=ds.index.unique(level="correlation").tolist()[0]
     )
     x_axis = param.Selector(
         label="X Axis",
@@ -107,23 +148,34 @@ class GainInspector(param.Parameterized):
         default=0.25
     )
     flag_antennas = param.Action(
-        lambda x: x.param.trigger('flag_antennas'), 
+        lambda x: x.param.trigger('flag_antennas'),
         label='FLAG (ALL ANTENNAS)'
     )
     flag = param.Action(
-        lambda x: x.param.trigger('flag'), 
+        lambda x: x.param.trigger('flag'),
         label='FLAG'
     )
     save = param.Action(
-        lambda x: x.param.trigger('save'), 
+        lambda x: x.param.trigger('save'),
         label='SAVE'
     )
 
-    def __init__(self, **params):
+    def __init__(self, path, **params):
+        
+        self.dm = DataManager(path)
+        self.data = self.dm.dataframe
+
+        self.param.antenna.objects = self.dm.antennas
+        self.param.antenna.default = self.dm.antennas[0]
+        
+        self.param.direction.objects = self.dm.directions
+        self.param.direction.default = self.dm.directions[0]
+
+        self.param.correlation.objects = self.dm.correlations
+        self.param.correlation.default = self.dm.correlations[0]
+
         super().__init__(**params)
 
-        self.data = ds  # Make this an argument.
- 
         self.param.watch(self.flag_selection, ['flag'], queued=True)
         self.param.watch(self.flag_selection, ['flag_antennas'], queued=True)
         self.param.watch(self.write_flags, ['save'], queued=True)
@@ -145,45 +197,11 @@ class GainInspector(param.Parameterized):
             "y_axis", self.y_axis,
             "antenna", self.antenna,
             "direction", self.direction,
-            "correlation", self.correlation 
+            "correlation", self.correlation
         )
 
     def write_flags(self, event):
-
-        n_corr = len(self.data.index.unique(level="correlation"))
-
-        flags = self.data.gain_flags.values.copy()
-
-        array_shape = xds.gain_flags.shape + (n_corr,)
-        array_flags = flags.reshape(array_shape) 
-        array_flags = array_flags[..., 0]  # No correlation axis in the gains.
-
-        offset = 0
-
-        output_xdsl = []
-
-        for _xds in xdsl:
-
-            n_time = _xds.sizes["gain_time"]
-
-            updated_xds = _xds.assign(
-                {
-                    "gain_flags": (
-                        _xds.gain_flags.dims,
-                        da.from_array(array_flags[offset: offset + n_time])
-                    )
-                }
-            )
-
-            offset += n_time
-
-            output_xdsl.append(updated_xds)
-
-        # TODO: This needs to use the actual input path.
-        writes = xds_to_zarr(output_xdsl, "::G", columns="gain_flags", rechunk=True)
-
-        da.compute(writes)
-
+        self.dm.write_flags()
 
     @property
     def current_selection(self):
@@ -222,13 +240,13 @@ class GainInspector(param.Parameterized):
 
     def flags_from_rowids(self, rowids, all_antennas=False):
 
-        n_corr = len(self.data.index.unique(level="correlation"))
+        n_corr = self.dm.n_corr
 
         flags = np.zeros_like(self.data.gain_flags)
 
         flags[rowids] = 1  # New flags.
 
-        array_shape = xds.gain_flags.shape + (n_corr,)
+        array_shape = self.dm.consolidated_dataset.gain_flags.shape + (n_corr,)
         array_flags = flags.reshape(array_shape)
 
         or_axes = (-1, -3) if all_antennas else -1
@@ -311,7 +329,7 @@ class GainInspector(param.Parameterized):
         for column in missing_columns:
             df[column] = func_map[column](df["gains"])
 
-action_example = GainInspector()
+action_example = GainInspector("::G")
 
 customised_params= pn.Param(
     action_example.param,
