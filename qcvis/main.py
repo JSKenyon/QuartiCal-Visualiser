@@ -365,26 +365,30 @@ class GainInspector(param.Parameterized):
 
         return plot
 
-action_example = GainInspector("::G")
+if __name__ == "__main__":
 
-customised_params= pn.Param(
-    action_example.param,
-    show_name=False,
-    widgets={
-        # 'update': {'visible': False},
-        'flag': {
-            "type": pn.widgets.Button,
-            "description": (
-                "Flag gain solutions corresponding to selected regions."
-            )
-        },
-        # 'correlation': pn.widgets.RadioButtonGroup
-    }
-)
+    action_example = GainInspector("::G")
 
-pn.template.MaterialTemplate(
-    # site="Panel",
-    title="QuartiCal-Visualiser",
-    sidebar=customised_params,
-    main=[action_example.update_plot],
-).servable()
+    customised_params= pn.Param(
+        action_example.param,
+        show_name=False,
+        widgets={
+            # 'update': {'visible': False},
+            'flag': {
+                "type": pn.widgets.Button,
+                "description": (
+                    "Flag gain solutions corresponding to selected regions."
+                )
+            },
+            # 'correlation': pn.widgets.RadioButtonGroup
+        }
+    )
+
+    layout = pn.template.MaterialTemplate(
+        # site="Panel",
+        title="QuartiCal-Visualiser",
+        sidebar=customised_params,
+        main=[action_example.update_plot],
+    ).servable()
+
+    pn.serve(layout)
