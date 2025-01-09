@@ -1,6 +1,7 @@
 import panel as pn
 from qcvis.datamanager import DataManager
 from qcvis.interface import GainInspector
+from qcvis.parameterised import ParamInspector
 
 from pathlib import Path
 from typing import Optional
@@ -37,9 +38,11 @@ def app(
     # Mangle the path into the format required by daskms.
     gain_path = Path(f"{gain_path.parent}::{gain_path.stem}")
 
-    datamanager = DataManager(gain_path)
-
+    datamanager = DataManager(gain_path, fields=["gains", "gain_flags"])
     interface = GainInspector(datamanager)
+    # datamanager = DataManager(gain_path, fields=["params", "param_flags"])
+    # interface = ParamInspector(datamanager)
+    
 
     customised_params = pn.Param(
         interface.param,

@@ -50,7 +50,7 @@ class GainInspector(param.Parameterized):
     # Set the bounds during the init step.
     rasterize_when = param.Integer(
         label="Rasterize Limit",
-        bounds=(10000, None),
+        bounds=(1, None),
         step=10000,
         default=50000,
     )
@@ -97,7 +97,7 @@ class GainInspector(param.Parameterized):
         )
 
         # Ensure that amplitude is added to data on init.
-        self.dm.set_otf_columns("amplitude")
+        self.dm.set_otf_columns(amplitude="gains")
 
         self.param.watch(
             self.update_flags,
@@ -125,8 +125,6 @@ class GainInspector(param.Parameterized):
         self.rectangles = hv.Rectangles([])
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
-
-        self.param.rasterize_when.bounds = (10000, len(self.current_selection))
 
     def update_flags(self, event):
 
@@ -163,10 +161,10 @@ class GainInspector(param.Parameterized):
 
     def update_otf_columns(self, event):
         self.dm.set_otf_columns(
-            *[
-                axis_map[ax] for ax in self.current_axes 
+            **{
+                axis_map[ax]: "gains" for ax in self.current_axes 
                 if axis_map[ax] in self.dm.otf_column_map
-            ]
+            }
         )
 
     @property

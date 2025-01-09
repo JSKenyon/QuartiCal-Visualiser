@@ -160,10 +160,10 @@ class ParamInspector(param.Parameterized):
 
     def update_otf_columns(self, event):
         self.dm.set_otf_columns(
-            *[
-                axis_map[ax] for ax in self.current_axes 
+            **{
+                axis_map[ax]: "params" for ax in self.current_axes 
                 if axis_map[ax] in self.dm.otf_column_map
-            ]
+            }
         )
 
     @property

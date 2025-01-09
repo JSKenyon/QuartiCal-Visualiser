@@ -35,7 +35,7 @@ class DataManager(object):
         self.locator = tuple([slice(None) for _ in index_levels])
 
         # Initialise columns which should be added on the fly.
-        self.otf_columns = []
+        self.otf_columns = {}
 
     def get_coord_values(self, dim_name):
         if not isinstance(dim_name, str):
@@ -47,7 +47,7 @@ class DataManager(object):
             raise ValueError("dim_name expects a string.")
         return self.consolidated_dataset.sizes[dim_name]
 
-    def set_otf_columns(self, *columns):
+    def set_otf_columns(self, **columns):
         self.otf_columns = columns
 
     def set_selection(self, **selections):
@@ -69,9 +69,9 @@ class DataManager(object):
 
         # Add supported otf columns e.g. amplitude. TODO: These should have
         # a condifurable target rather than defaulting to the gains.
-        for column in self.otf_columns:
+        for column, target in self.otf_columns.items():
             otf_func = self.otf_column_map[column]
-            selection[column] = otf_func(selection.gains)
+            selection[column] = otf_func(selection[target])
 
         return selection.reset_index()  # Reset to satisfy hvplot - irritating!
 
