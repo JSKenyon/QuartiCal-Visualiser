@@ -38,32 +38,54 @@ def app(
     # Mangle the path into the format required by daskms.
     gain_path = Path(f"{gain_path.parent}::{gain_path.stem}")
 
-    datamanager = DataManager(gain_path, fields=["gains", "gain_flags"])
-    interface = GainInspector(datamanager)
-    # datamanager = DataManager(gain_path, fields=["params", "param_flags"])
-    # interface = ParamInspector(datamanager)
-    
+    inspectors = {}
 
-    customised_params = pn.Param(
-        interface.param,
-        show_name=False,
-        widgets={
-            # 'update': {'visible': False},
-            'flag': {
-                "type": pn.widgets.Button,
-                "description": (
-                    "Flag gain solutions corresponding to selected regions."
-                )
-            },
-            # 'correlation': pn.widgets.RadioButtonGroup
-        }
+    gain_dm = DataManager(gain_path, fields=["gains", "gain_flags"])
+    gain_inspector = GainInspector(gain_dm)
+    inspectors["Gains"] = gain_inspector
+
+    try:
+        param_dm = DataManager(gain_path, fields=["params", "param_flags"])
+        param_inspector = ParamInspector(param_dm)
+        inspectors["Parameters"] = param_inspector
+    except KeyError:
+        pass
+
+    def get_widgets(value):
+
+        return pn.Param(
+            inspectors[value].param,
+            show_name=False,
+            widgets={
+                # 'update': {'visible': False},
+                'flag': {
+                    "type": pn.widgets.Button,
+                    "description": (
+                        "Flag gain solutions corresponding to selected regions."
+                    )
+                },
+                # 'correlation': pn.widgets.RadioButtonGroup
+            }
+        )
+
+    def get_plot(value):
+        return inspectors[value].update_plot
+
+
+    plot_type = pn.widgets.RadioButtonGroup(
+        name="Inspector Type",
+        options=list(inspectors.keys()),
+        value=list(inspectors.keys())[0]
     )
+
+    bound_get_widgets = pn.bind(get_widgets, plot_type)
+    bound_get_plot = pn.bind(get_plot, plot_type)
 
     layout = pn.template.MaterialTemplate(
         # site="Panel",
         title="QuartiCal-Visualiser",
-        sidebar=customised_params,
-        main=[interface.update_plot],
+        sidebar=[plot_type, bound_get_widgets],
+        main=[bound_get_plot],
     ).servable()
 
     pn.serve(
