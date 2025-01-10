@@ -145,7 +145,7 @@ class GainInspector(param.Parameterized):
             if event.name == "flag_antennas":
                 flag_axes.append("antenna")
 
-            self.dm.flag_selection(query, flag_axes)
+            self.dm.flag_selection("gain_flags", query, flag_axes)
 
         self.dm.get_selection.cache_clear()  # Invalidate cache.
 

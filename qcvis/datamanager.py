@@ -20,7 +20,7 @@ class DataManager(object):
 
         self.path = path
         # The datasets are lazily evaluated - inexpensive to hold onto them.
-        self.datasets = xds_from_zarr(self.path)
+        self.datasets = [xds[fields] for xds in xds_from_zarr(self.path)]
         self.consolidated_dataset = xarray.combine_by_coords(
             self.datasets,
             combine_attrs="drop_conflicts"
@@ -75,26 +75,31 @@ class DataManager(object):
 
         return selection.reset_index()  # Reset to satisfy hvplot - irritating!
 
-    def flag_selection(self, query, dims=["correlation"]):
+    def flag_selection(self, target, query, dims):
         
         rowids = self.get_selection().query(query).rowid.values
 
-        n_corr = self.get_dim_size("correlation")
+        new_flags = np.zeros_like(self.dataframe[target])
 
-        flags = np.zeros_like(self.dataframe.gain_flags)
+        new_flags[rowids] = 1  # New flags.
 
-        flags[rowids] = 1  # New flags.
-
-        array_shape = self.consolidated_dataset.gain_flags.shape + (n_corr,)
-        array_flags = flags.reshape(array_shape)
-
+        array_shape = self.consolidated_dataset[target].shape 
         df_dims = self.dataframe.index.names
+
+        # TODO: This assumes the last dimension was broadcast. This should 
+        # be replaced with a more thorough approach that doesn't assume which
+        # axes have been broadcast.
+        if len(df_dims) != len(array_shape):
+            array_shape = array_shape + (-1,)
+        
+        array_flags = new_flags.reshape(array_shape)
+        array_shape = array_flags.shape  # Get the current array shape. 
         or_axes = tuple([df_dims.index(dim) for dim in dims]) 
 
         array_flags = array_flags.any(axis=or_axes, keepdims=True)
         array_flags = np.broadcast_to(array_flags, array_shape)
 
-        self.dataframe.gain_flags |= array_flags.ravel().astype(np.int8)
+        self.dataframe[target] |= array_flags.ravel().astype(np.int8)
 
 
     def write_flags(self):

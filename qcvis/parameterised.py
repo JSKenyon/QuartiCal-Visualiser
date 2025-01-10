@@ -139,12 +139,12 @@ class ParamInspector(param.Parameterized):
                 f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
             )
 
-            flag_axes = ["params"]
+            flag_axes = ["param_name"]
 
             if event.name == "flag_antennas":
                 flag_axes.append("antenna")
 
-            self.dm.flag_selection(query, flag_axes)
+            self.dm.flag_selection("param_flags", query, flag_axes)
 
         self.dm.get_selection.cache_clear()  # Invalidate cache.
 
