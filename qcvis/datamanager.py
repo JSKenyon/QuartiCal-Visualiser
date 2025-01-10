@@ -41,7 +41,7 @@ class DataManager(object):
         if not isinstance(dim_name, str):
             raise ValueError("dim_name expects a string.")
         return self.consolidated_dataset[dim_name].values
-        
+
     def get_dim_size(self, dim_name):
         if not isinstance(dim_name, str):
             raise ValueError("dim_name expects a string.")
@@ -76,25 +76,25 @@ class DataManager(object):
         return selection.reset_index()  # Reset to satisfy hvplot - irritating!
 
     def flag_selection(self, target, query, dims):
-        
+
         rowids = self.get_selection().query(query).rowid.values
 
         new_flags = np.zeros_like(self.dataframe[target])
 
         new_flags[rowids] = 1  # New flags.
 
-        array_shape = self.consolidated_dataset[target].shape 
+        array_shape = self.consolidated_dataset[target].shape
         df_dims = self.dataframe.index.names
 
-        # TODO: This assumes the last dimension was broadcast. This should 
+        # TODO: This assumes the last dimension was broadcast. This should
         # be replaced with a more thorough approach that doesn't assume which
         # axes have been broadcast.
         if len(df_dims) != len(array_shape):
             array_shape = array_shape + (-1,)
-        
+
         array_flags = new_flags.reshape(array_shape)
-        array_shape = array_flags.shape  # Get the current array shape. 
-        or_axes = tuple([df_dims.index(dim) for dim in dims]) 
+        array_shape = array_flags.shape  # Get the current array shape.
+        or_axes = tuple([df_dims.index(dim) for dim in dims])
 
         array_flags = array_flags.any(axis=or_axes, keepdims=True)
         array_flags = np.broadcast_to(array_flags, array_shape)
@@ -102,12 +102,29 @@ class DataManager(object):
         self.dataframe[target] |= array_flags.ravel().astype(np.int8)
 
 
-    def write_flags(self):
-        # TODO: This is likely flawed for multiple spectral windows.
-        flags = self.dataframe.gain_flags.values[::self.n_corr].copy()
+    def write_flags(self, target):
+        # TODO: This presumes that the only concatenation axis is the first.
+        # In general, this may not be true for multi-SPW data and this code
+        # will need to be improved. The correct approach is to implement the
+        # inverse of combine_by_coords.
+        flags = self.dataframe[target].values.copy()
 
-        array_shape = self.consolidated_dataset.gain_flags.shape
-        array_flags = flags.reshape(array_shape)
+        df_dims = self.dataframe.index.names
+        df_sizes = [
+            len(self.dataframe.index.unique(level=i))
+            for i in range(len(df_dims))
+        ]
+
+        flags = flags.reshape(df_sizes)
+
+        ds_dims = self.consolidated_dataset[target].dims
+
+        missing_dims = set(df_dims) - set(ds_dims)
+
+        or_axes = tuple([df_dims.index(dim) for dim in missing_dims])
+
+        if or_axes:
+            flags = flags.any(axis=or_axes).astype(np.int8)
 
         offset = 0
 
@@ -115,25 +132,25 @@ class DataManager(object):
 
         for ds in self.datasets:
 
-            n_time = ds.sizes["gain_time"]
+            ax_size = ds.sizes[ds_dims[0]]
 
             updated_xds = ds.assign(
                 {
-                    "gain_flags": (
-                        ds.gain_flags.dims,
-                        da.from_array(array_flags[offset: offset + n_time])
+                    target: (
+                        ds[target].dims,
+                        da.from_array(flags[offset: offset + ax_size])
                     )
                 }
             )
 
-            offset += n_time
+            offset += ax_size
 
             output_xdsl.append(updated_xds)
 
         writes = xds_to_zarr(
             output_xdsl,
             self.path,
-            columns="gain_flags",
+            columns=target,
             rechunk=True
         )
 

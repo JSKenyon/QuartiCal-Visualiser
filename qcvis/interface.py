@@ -74,13 +74,13 @@ class GainInspector(param.Parameterized):
     )
 
     def __init__(self, datamanager, **params):
-        
+
         self.dm = datamanager
         self.data = self.dm.dataframe
 
         self.param.antenna.objects = self.dm.get_coord_values("antenna")
         self.param.antenna.default = self.param.antenna.objects[0]
-        
+
         self.param.direction.objects = self.dm.get_coord_values("direction")
         self.param.direction.default = self.param.direction.objects[0]
 
@@ -150,7 +150,7 @@ class GainInspector(param.Parameterized):
         self.dm.get_selection.cache_clear()  # Invalidate cache.
 
     def write_flags(self, event):
-        self.dm.write_flags()
+        self.dm.write_flags("gain_flags")
 
     def update_selection(self, event):
         self.dm.set_selection(
@@ -162,7 +162,7 @@ class GainInspector(param.Parameterized):
     def update_otf_columns(self, event):
         self.dm.set_otf_columns(
             **{
-                axis_map[ax]: "gains" for ax in self.current_axes 
+                axis_map[ax]: "gains" for ax in self.current_axes
                 if axis_map[ax] in self.dm.otf_column_map
             }
         )
