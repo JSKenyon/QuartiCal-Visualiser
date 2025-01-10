@@ -123,7 +123,8 @@ class ParamInspector(param.Parameterized):
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
-        # self.param.rasterize_when.bounds = (1, len(self.current_selection))
+        # Start in the appropriate state based on size of selection.
+        self.rasterized = len(self.current_selection) > self.rasterize_when
 
     def update_flags(self, event):
 

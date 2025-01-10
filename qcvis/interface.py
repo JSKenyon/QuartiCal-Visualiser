@@ -126,6 +126,9 @@ class GainInspector(param.Parameterized):
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
+        # Start in the appropriate state based on size of selection.
+        self.rasterized = len(self.current_selection) > self.rasterize_when
+
     def update_flags(self, event):
 
         if not self.box_edit.data:  # Nothing has been flagged.
