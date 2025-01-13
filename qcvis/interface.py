@@ -128,7 +128,7 @@ class GainInspector(param.Parameterized):
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
         # Start in the appropriate state based on size of selection.
-        self.rasterized = len(self.current_selection) > self.rasterize_when
+        self.rasterized = len(self.dm.get_selection()) > self.rasterize_when
 
     def update_flags(self, event):
 
@@ -169,10 +169,6 @@ class GainInspector(param.Parameterized):
     @property
     def current_axes(self):
         return [self.x_axis, self.y_axis]
-
-    @property
-    def current_selection(self):
-        return self.dm.get_selection()
 
     def update_plot(self):
 

@@ -54,7 +54,7 @@ class DataManager(object):
     # @cached(
     #     cache=LRUCache(maxsize=16),
     #     key=lambda self: hashkey(
-    #         tuple(self.otf_columns),
+    #         tuple(list(self.dataset.data_vars.keys())),
     #         tuple([None if isinstance(l, slice) else l for l in self.selector])
     #     )
     # )
