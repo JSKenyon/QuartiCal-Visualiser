@@ -175,35 +175,14 @@ class ParamInspector(param.Parameterized):
 
         pn.state.log(f'Plot update triggered.')
 
-        sel = self.current_selection
-
-        xax = axis_map[self.x_axis]
-        yax = axis_map[self.y_axis]
-
-        sel = sel.where(sel.param_flags != 1)
-
-        xax_data = sel[xax]
-        yax_data = sel[yax]
-
-        xax_slicer = tuple(
-            [
-                slice(None) if d in xax_data.dims else np.newaxis
-                for d in sel.params.dims
-            ]
-        )
-        yax_slicer = tuple(
-            [
-                slice(None) if d in yax_data.dims else np.newaxis
-                for d in sel.params.dims
-            ]
+        plot_data = self.dm.get_plot_data(
+            axis_map[self.x_axis],
+            axis_map[self.y_axis],
+            data_field="params",
+            flag_field="param_flags"
         )
 
-        x = np.broadcast_to(xax_data.values[xax_slicer], sel.params.shape).ravel()
-        y = np.broadcast_to(yax_data.values[yax_slicer], sel.params.shape).ravel()
-
-        sel = pd.DataFrame({xax: x, yax: y})
-
-        plot = self.rectangles * sel.hvplot.scatter(
+        plot = self.rectangles * plot_data.hvplot.scatter(
             x=axis_map[self.x_axis],
             y=axis_map[self.y_axis],
             rasterize=self.rasterized,

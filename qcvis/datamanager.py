@@ -1,6 +1,7 @@
 import numpy as np
 import xarray
 import dask.array as da
+import pandas as pd
 
 from daskms.experimental.zarr import xds_from_zarr, xds_to_zarr
 from cachetools import cached, LRUCache
@@ -76,6 +77,44 @@ class DataManager(object):
             )
 
         return selection
+    
+    def get_plot_data(
+        self,
+        x_axis,
+        y_axis,
+        data_field="gains",
+        flag_field="gain_flags"
+    ):
+
+        sel = self.get_selection()
+        sel = sel.where(sel[flag_field] != 1)
+
+        x_data_array = sel[x_axis]
+        y_data_array = sel[y_axis]
+
+        x_slicer = tuple(
+            [
+                slice(None) if d in x_data_array.dims else np.newaxis
+                for d in sel[data_field].dims
+            ]
+        )
+        y_slicer = tuple(
+            [
+                slice(None) if d in y_data_array.dims else np.newaxis
+                for d in sel[data_field].dims
+            ]
+        )
+
+        x = np.broadcast_to(
+            x_data_array.values[x_slicer],
+            sel[data_field].shape
+        ).ravel()
+        y = np.broadcast_to(
+            y_data_array.values[y_slicer],
+            sel[data_field].shape
+        ).ravel()
+
+        return pd.DataFrame({x_axis: x, y_axis: y})
 
     def flag_selection(self, target, criteria):
 
