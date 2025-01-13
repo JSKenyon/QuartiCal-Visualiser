@@ -73,7 +73,6 @@ class ParamInspector(param.Parameterized):
     def __init__(self, datamanager, **params):
 
         self.dm = datamanager
-        self.data = self.dm.dataframe
 
         self.param.antenna.objects = self.dm.get_coord_values("antenna")
         self.param.antenna.default = self.param.antenna.objects[0]
@@ -135,19 +134,14 @@ class ParamInspector(param.Parameterized):
 
         for x_min, y_min, x_max, y_max in zip(*corners.values()):
 
-            query = (
-                f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
-                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
-            )
+            criteria = {
+                axis_map[self.x_axis]: (x_min, x_max),
+                axis_map[self.y_axis]: (y_min, y_max)
+            }
 
-            flag_axes = ["param_name"]
+            self.dm.flag_selection("param_flags", criteria)
 
-            if event.name == "flag_antennas":
-                flag_axes.append("antenna")
-
-            self.dm.flag_selection("param_flags", query, flag_axes)
-
-        self.dm.get_selection.cache_clear()  # Invalidate cache.
+        # self.dm.get_selection.cache_clear()  # Invalidate cache.
 
     def write_flags(self, event):
         self.dm.write_flags("param_flags")

@@ -57,7 +57,7 @@ class DataManager(object):
     #         tuple([None if isinstance(l, slice) else l for l in self.selector])
     #     )
     # )
-    def get_xarray_selection(self):
+    def get_selection(self):
 
         selection = self.dataset.sel(
             {d: v for d, v in zip(self.dataset.dims, self.selector)}
@@ -77,9 +77,9 @@ class DataManager(object):
 
         return selection
 
-    def flag_xarray_selection(self, target, criteria):
+    def flag_selection(self, target, criteria):
 
-        sel = self.get_xarray_selection()
+        sel = self.get_selection()
 
         dim_criteria = [k for k in criteria if k in sel.dims]
         val_criteria = [k for k in criteria if k not in sel.dims]

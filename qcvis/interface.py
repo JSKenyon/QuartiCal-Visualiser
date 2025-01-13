@@ -145,7 +145,7 @@ class GainInspector(param.Parameterized):
                 axis_map[self.y_axis]: (y_min, y_max)
             }
 
-            self.dm.flag_xarray_selection("gain_flags", criteria)
+            self.dm.flag_selection("gain_flags", criteria)
 
         # self.dm.get_selection.cache_clear()  # Invalidate cache.
 
@@ -173,7 +173,7 @@ class GainInspector(param.Parameterized):
 
     @property
     def current_selection(self):
-        return self.dm.get_xarray_selection()
+        return self.dm.get_selection()
 
     def update_plot(self):
 
