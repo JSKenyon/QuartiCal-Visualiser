@@ -187,7 +187,6 @@ class GainInspector(param.Parameterized):
             resample_when=self.rasterize_when if self.rasterized else None,
             hover=False,
             responsive=True,
-            height=800,
             # logz=True,
             # x_sampling=self.minimum_sampling.get(self.x_axis, None),
             # y_sampling=self.minimum_sampling.get(self.y_axis, None),
