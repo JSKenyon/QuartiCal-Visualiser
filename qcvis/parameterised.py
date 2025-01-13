@@ -64,6 +64,11 @@ class ParamInspector(param.Parameterized):
         objects=["SELECTED ANTENNA", "ALL ANTENNAS"],
         default="SELECTED ANTENNA"
     )
+    flag_axis = param.Selector(
+        label='FLAGGING AXIS',
+        objects=["SELECTION", "SELECTION (X-AXIS)", "SELECTION (Y-AXIS)"],
+        default="SELECTION"
+    )
     flag = param.Action(
         lambda x: x.param.trigger('flag'),
         label='FLAG'
@@ -87,6 +92,7 @@ class ParamInspector(param.Parameterized):
     _flag_parameters = [
         "flag",
         "flag_mode",
+        "flag_axis",
         "save"
     ]
 
@@ -237,6 +243,14 @@ class ParamInspector(param.Parameterized):
                 "type": pn.widgets.RadioButtonGroup,
                 "orientation": "vertical",
                 "name": "FLAGGING MODE"
+            }
+        )
+
+        widget_opts["flag_axis"].update(
+            {
+                "type": pn.widgets.RadioButtonGroup,
+                "orientation": "vertical",
+                "name": "FLAGGING AXIS"
             }
         )
 
