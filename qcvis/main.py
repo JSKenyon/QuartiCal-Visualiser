@@ -90,5 +90,6 @@ def app(
 
     pn.serve(
         layout,
-        port=port
+        port=port,
+        show=False
     )

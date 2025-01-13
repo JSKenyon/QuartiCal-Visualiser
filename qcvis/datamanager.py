@@ -24,7 +24,7 @@ class DataManager(object):
         self.consolidated_dataset = xarray.combine_by_coords(
             self.datasets,
             combine_attrs="drop_conflicts"
-        )
+        ).compute()
         # Eagerly evaluated on conversion to pandas dataframe.
         self.dataframe = self.consolidated_dataset[fields].to_dataframe()
         # Add a rowid column to the dataframe to simplify later operations.
@@ -56,51 +56,49 @@ class DataManager(object):
             [selections.get(i, slice(None)) for i in index_levels]
         )
 
-    @cached(
-        cache=LRUCache(maxsize=16),
-        key=lambda self: hashkey(
-            tuple(self.otf_columns),
-            tuple([None if isinstance(l, slice) else l for l in self.locator])
+    # @cached(
+    #     cache=LRUCache(maxsize=16),
+    #     key=lambda self: hashkey(
+    #         tuple(self.otf_columns),
+    #         tuple([None if isinstance(l, slice) else l for l in self.locator])
+    #     )
+    # )
+    def get_xarray_selection(self):
+
+        selection = self.consolidated_dataset.sel(
+            {d: v for d, v in zip(self.consolidated_dataset.dims, self.locator)}
         )
-    )
-    def get_selection(self):
 
-        selection = self.dataframe.loc[self.locator]
-
-        # Add supported otf columns e.g. amplitude. TODO: These should have
-        # a condifurable target rather than defaulting to the gains.
+        # Add supported otf columns e.g. amplitude.
         for column, target in self.otf_columns.items():
             otf_func = self.otf_column_map[column]
-            selection[column] = otf_func(selection[target])
+            selection = selection.assign(
+                {
+                    column: (
+                        selection[target].dims,
+                        otf_func(selection[target].values)
+                    )
+                }
+            )
 
-        return selection.reset_index()  # Reset to satisfy hvplot - irritating!
+        return selection
 
-    def flag_selection(self, target, query, dims):
+    def flag_xarray_selection(self, target, criteria):
 
-        rowids = self.get_selection().query(query).rowid.values
+        sel = self.get_xarray_selection()
 
-        new_flags = np.zeros_like(self.dataframe[target])
+        dim_criteria = [k for k in criteria if k in sel.dims]
+        val_criteria = [k for k in criteria if k not in sel.dims]
 
-        new_flags[rowids] = 1  # New flags.
+        for dim in dim_criteria:
+            sel = sel.sel({dim: slice(*criteria[dim])})
 
-        array_shape = self.consolidated_dataset[target].shape
-        df_dims = self.dataframe.index.names
+        bool_arr = np.ones_like(sel[target].values, dtype=bool)
+        for val in val_criteria:
+            bool_arr[np.where(criteria[val][0] > sel[val].values)] = False
+            bool_arr[np.where(criteria[val][1] < sel[val].values)] = False
 
-        # TODO: This assumes the last dimension was broadcast. This should
-        # be replaced with a more thorough approach that doesn't assume which
-        # axes have been broadcast.
-        if len(df_dims) != len(array_shape):
-            array_shape = array_shape + (-1,)
-
-        array_flags = new_flags.reshape(array_shape)
-        array_shape = array_flags.shape  # Get the current array shape.
-        or_axes = tuple([df_dims.index(dim) for dim in dims])
-
-        array_flags = array_flags.any(axis=or_axes, keepdims=True)
-        array_flags = np.broadcast_to(array_flags, array_shape)
-
-        self.dataframe[target] |= array_flags.ravel().astype(np.int8)
-
+        sel[target].values[bool_arr] = 1
 
     def write_flags(self, target):
         # TODO: This presumes that the only concatenation axis is the first.

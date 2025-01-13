@@ -1,6 +1,9 @@
 import pandas as pd
 
 import hvplot.pandas  # NOQA - required to register hvpot behaviour.
+import hvplot.xarray  # NOQA - required to register hvpot behaviour.
+
+import numpy as np
 
 import holoviews as hv
 from holoviews import opts, streams
@@ -138,19 +141,14 @@ class GainInspector(param.Parameterized):
 
         for x_min, y_min, x_max, y_max in zip(*corners.values()):
 
-            query = (
-                f"{x_min} <= {axis_map[self.x_axis]} <= {x_max} &"
-                f"{y_min} <= {axis_map[self.y_axis]} <= {y_max}"
-            )
+            criteria = {
+                axis_map[self.x_axis]: (x_min, x_max),
+                axis_map[self.y_axis]: (y_min, y_max)
+            }
 
-            flag_axes = ["correlation"]
+            self.dm.flag_xarray_selection("gain_flags", criteria)
 
-            if event.name == "flag_antennas":
-                flag_axes.append("antenna")
-
-            self.dm.flag_selection("gain_flags", query, flag_axes)
-
-        self.dm.get_selection.cache_clear()  # Invalidate cache.
+        # self.dm.get_selection.cache_clear()  # Invalidate cache.
 
     def write_flags(self, event):
         self.dm.write_flags("gain_flags")
@@ -176,15 +174,39 @@ class GainInspector(param.Parameterized):
 
     @property
     def current_selection(self):
-        return self.dm.get_selection()
+        return self.dm.get_xarray_selection()
 
     def update_plot(self):
 
         pn.state.log(f'Plot update triggered.')
-
+        
         sel = self.current_selection
 
-        sel = sel[sel["gain_flags"] != 1]
+        xax = axis_map[self.x_axis]
+        yax = axis_map[self.y_axis]
+
+        sel = sel.where(sel.gain_flags != 1)
+
+        xax_data = sel[xax]
+        yax_data = sel[yax]
+
+        xax_slicer = tuple(
+            [
+                slice(None) if d in xax_data.dims else np.newaxis
+                for d in sel.gains.dims
+            ]
+        )
+        yax_slicer = tuple(
+            [
+                slice(None) if d in yax_data.dims else np.newaxis
+                for d in sel.gains.dims
+            ]
+        )
+
+        x = np.broadcast_to(xax_data.values[xax_slicer], sel.gains.shape).ravel()
+        y = np.broadcast_to(yax_data.values[yax_slicer], sel.gains.shape).ravel()
+
+        sel = pd.DataFrame({xax: x, yax: y})
 
         plot = self.rectangles * sel.hvplot.scatter(
             x=axis_map[self.x_axis],
