@@ -2,6 +2,8 @@ import pandas as pd
 
 import hvplot.pandas  # NOQA - required to register hvpot behaviour.
 
+import numpy as np
+
 import holoviews as hv
 from holoviews import opts, streams
 
@@ -175,7 +177,31 @@ class ParamInspector(param.Parameterized):
 
         sel = self.current_selection
 
-        sel = sel[sel["param_flags"] != 1]
+        xax = axis_map[self.x_axis]
+        yax = axis_map[self.y_axis]
+
+        sel = sel.where(sel.param_flags != 1)
+
+        xax_data = sel[xax]
+        yax_data = sel[yax]
+
+        xax_slicer = tuple(
+            [
+                slice(None) if d in xax_data.dims else np.newaxis
+                for d in sel.params.dims
+            ]
+        )
+        yax_slicer = tuple(
+            [
+                slice(None) if d in yax_data.dims else np.newaxis
+                for d in sel.params.dims
+            ]
+        )
+
+        x = np.broadcast_to(xax_data.values[xax_slicer], sel.params.shape).ravel()
+        y = np.broadcast_to(yax_data.values[yax_slicer], sel.params.shape).ravel()
+
+        sel = pd.DataFrame({xax: x, yax: y})
 
         plot = self.rectangles * sel.hvplot.scatter(
             x=axis_map[self.x_axis],
