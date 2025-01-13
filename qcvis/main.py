@@ -53,20 +53,7 @@ def app(
         pass
 
     def get_widgets(value):
-
-        params = inspectors[value].param
-
-        widget_opts = {}
-
-        for p in params:
-            if not isinstance(params[p], param.Boolean):
-                widget_opts[p] = {"sizing_mode": "stretch_width"}
-
-        return pn.Param(
-            inspectors[value].param,
-            show_name=False,
-            widgets=widget_opts
-        )
+        return inspectors[value].widgets
 
     def get_plot(value):
         return inspectors[value].update_plot
@@ -85,7 +72,7 @@ def app(
     layout = pn.template.MaterialTemplate(
         # site="Panel",
         title="QuartiCal-Visualiser",
-        sidebar=[plot_type, pn.WidgetBox(bound_get_widgets)],
+        sidebar=[plot_type, bound_get_widgets],
         main=[bound_get_plot],
     ).servable()
 

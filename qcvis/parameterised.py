@@ -72,6 +72,24 @@ class ParamInspector(param.Parameterized):
         label='SAVE'
     )
 
+    _plot_parameters = [
+        "antenna",
+        "direction",
+        "gain_param",
+        "x_axis",
+        "y_axis",
+        "rasterized",
+        "rasterize_when",
+        "pixel_ratio",
+    ]
+
+    _flag_parameters = [
+        "flag",
+        "flag_antennas",
+        "save"
+    ]
+
+
     def __init__(self, datamanager, **params):
 
         self.dm = datamanager
@@ -197,3 +215,30 @@ class ParamInspector(param.Parameterized):
         pn.state.log(f'Plot update completed.')
 
         return plot
+    
+    @property
+    def widgets(self):
+
+        widget_opts = {}
+
+        for k in self.param.objects().keys():
+            widget_opts[k] = {"sizing_mode": "stretch_width"}
+
+        default_widgets = pn.Param(
+            self.param,
+            parameters=self._plot_parameters,
+            show_name=False,
+            widgets=widget_opts
+        )
+
+        flagging_widgets = pn.Param(
+            self.param,
+            parameters=self._flag_parameters,
+            show_name=False,
+            widgets=widget_opts
+        )
+
+        return pn.Column(
+            pn.WidgetBox(default_widgets),
+            pn.WidgetBox(flagging_widgets)
+        )
