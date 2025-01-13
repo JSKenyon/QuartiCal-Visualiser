@@ -62,9 +62,10 @@ class GainInspector(param.Parameterized):
         step=0.05,
         default=0.25
     )
-    flag_antennas = param.Action(
-        lambda x: x.param.trigger('flag_antennas'),
-        label='FLAG (ALL ANTENNAS)'
+    flag_mode = param.Selector(
+        label='FLAGGING MODE',
+        objects=["SELECTED ANTENNA", "ALL ANTENNAS"],
+        default="SELECTED ANTENNA"
     )
     flag = param.Action(
         lambda x: x.param.trigger('flag'),
@@ -88,7 +89,7 @@ class GainInspector(param.Parameterized):
 
     _flag_parameters = [
         "flag",
-        "flag_antennas",
+        "flag_mode",
         "save"
     ]
 
@@ -119,7 +120,7 @@ class GainInspector(param.Parameterized):
 
         self.param.watch(
             self.update_flags,
-            ['flag', 'flag_antennas'],
+            ['flag'],
             queued=True
         )
 
@@ -227,14 +228,22 @@ class GainInspector(param.Parameterized):
         default_widgets = pn.Param(
             self.param,
             parameters=self._plot_parameters,
-            show_name=False,
+            name="SELECTION",
             widgets=widget_opts
+        )
+
+        widget_opts["flag_mode"].update(
+            {
+                "type": pn.widgets.RadioButtonGroup,
+                "orientation": "vertical",
+                "name": "FLAGGING MODE"
+            }
         )
 
         flagging_widgets = pn.Param(
             self.param,
             parameters=self._flag_parameters,
-            show_name=False,
+            name="FLAGGING",
             widgets=widget_opts
         )
 

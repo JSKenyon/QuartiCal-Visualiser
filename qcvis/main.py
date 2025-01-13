@@ -53,11 +53,16 @@ def app(
         pass
 
     def get_widgets(value):
-        return inspectors[value].widgets
+        widgets =  inspectors[value].widgets
+
+        # Disable flagging on gains when gain is parameterized.
+        if "Parameters" in inspectors and value == "Gains":
+            widgets = pn.Column(widgets[0])
+
+        return widgets
 
     def get_plot(value):
         return inspectors[value].update_plot
-
 
     plot_type = pn.widgets.RadioButtonGroup(
         name="Inspector Type",
