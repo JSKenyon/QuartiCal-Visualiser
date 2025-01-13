@@ -101,47 +101,21 @@ class DataManager(object):
         sel[target].values[bool_arr] = 1
 
     def write_flags(self, target):
-        # TODO: This presumes that the only concatenation axis is the first.
-        # In general, this may not be true for multi-SPW data and this code
-        # will need to be improved. The correct approach is to implement the
-        # inverse of combine_by_coords.
-        flags = self.dataframe[target].values.copy()
-
-        df_dims = self.dataframe.index.names
-        df_sizes = [
-            len(self.dataframe.index.unique(level=i))
-            for i in range(len(df_dims))
-        ]
-
-        flags = flags.reshape(df_sizes)
-
-        ds_dims = self.consolidated_dataset[target].dims
-
-        missing_dims = set(df_dims) - set(ds_dims)
-
-        or_axes = tuple([df_dims.index(dim) for dim in missing_dims])
-
-        if or_axes:
-            flags = flags.any(axis=or_axes).astype(np.int8)
-
-        offset = 0
 
         output_xdsl = []
 
         for ds in self.datasets:
 
-            ax_size = ds.sizes[ds_dims[0]]
+            flags = self.consolidated_dataset[target].sel(ds[target].coords)
 
             updated_xds = ds.assign(
                 {
                     target: (
-                        ds[target].dims,
-                        da.from_array(flags[offset: offset + ax_size])
+                        flags.dims,
+                        da.from_array(flags.values)
                     )
                 }
             )
-
-            offset += ax_size
 
             output_xdsl.append(updated_xds)
 
