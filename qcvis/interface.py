@@ -79,7 +79,6 @@ class GainInspector(param.Parameterized):
     def __init__(self, datamanager, **params):
 
         self.dm = datamanager
-        self.data = self.dm.dataframe
 
         self.param.antenna.objects = self.dm.get_coord_values("antenna")
         self.param.antenna.default = self.param.antenna.objects[0]

@@ -21,18 +21,13 @@ class DataManager(object):
         self.path = path
         # The datasets are lazily evaluated - inexpensive to hold onto them.
         self.datasets = [xds[fields] for xds in xds_from_zarr(self.path)]
-        self.consolidated_dataset = xarray.combine_by_coords(
+        self.dataset = xarray.combine_by_coords(
             self.datasets,
             combine_attrs="drop_conflicts"
         ).compute()
-        # Eagerly evaluated on conversion to pandas dataframe.
-        self.dataframe = self.consolidated_dataset[fields].to_dataframe()
-        # Add a rowid column to the dataframe to simplify later operations.
-        self.dataframe["rowid"] = np.arange(len(self.dataframe))
 
         # Initialise data selection - defaults to all data.
-        index_levels = self.dataframe.index.names
-        self.locator = tuple([slice(None) for _ in index_levels])
+        self.selector = tuple([slice(None) for _ in self.dataset.dims])
 
         # Initialise columns which should be added on the fly.
         self.otf_columns = {}
@@ -40,33 +35,32 @@ class DataManager(object):
     def get_coord_values(self, dim_name):
         if not isinstance(dim_name, str):
             raise ValueError("dim_name expects a string.")
-        return self.consolidated_dataset[dim_name].values
+        return self.dataset[dim_name].values
 
     def get_dim_size(self, dim_name):
         if not isinstance(dim_name, str):
             raise ValueError("dim_name expects a string.")
-        return self.consolidated_dataset.sizes[dim_name]
+        return self.dataset.sizes[dim_name]
 
     def set_otf_columns(self, **columns):
         self.otf_columns = columns
 
     def set_selection(self, **selections):
-        index_levels = self.dataframe.index.names
-        self.locator = tuple(
-            [selections.get(i, slice(None)) for i in index_levels]
+        self.selector = tuple(
+            [selections.get(i, slice(None)) for i in self.dataset.dims]
         )
 
     # @cached(
     #     cache=LRUCache(maxsize=16),
     #     key=lambda self: hashkey(
     #         tuple(self.otf_columns),
-    #         tuple([None if isinstance(l, slice) else l for l in self.locator])
+    #         tuple([None if isinstance(l, slice) else l for l in self.selector])
     #     )
     # )
     def get_xarray_selection(self):
 
-        selection = self.consolidated_dataset.sel(
-            {d: v for d, v in zip(self.consolidated_dataset.dims, self.locator)}
+        selection = self.dataset.sel(
+            {d: v for d, v in zip(self.dataset.dims, self.selector)}
         )
 
         # Add supported otf columns e.g. amplitude.
@@ -106,7 +100,7 @@ class DataManager(object):
 
         for ds in self.datasets:
 
-            flags = self.consolidated_dataset[target].sel(ds[target].coords)
+            flags = self.dataset[target].sel(ds[target].coords)
 
             updated_xds = ds.assign(
                 {
