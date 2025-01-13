@@ -1,3 +1,4 @@
+import param
 import panel as pn
 from qcvis.datamanager import DataManager
 from qcvis.interface import GainInspector
@@ -53,19 +54,18 @@ def app(
 
     def get_widgets(value):
 
+        params = inspectors[value].param
+
+        widget_opts = {}
+
+        for p in params:
+            if not isinstance(params[p], param.Boolean):
+                widget_opts[p] = {"sizing_mode": "stretch_width"}
+
         return pn.Param(
             inspectors[value].param,
             show_name=False,
-            widgets={
-                # 'update': {'visible': False},
-                'flag': {
-                    "type": pn.widgets.Button,
-                    "description": (
-                        "Flag gain solutions corresponding to selected regions."
-                    )
-                },
-                # 'correlation': pn.widgets.RadioButtonGroup
-            }
+            widgets=widget_opts
         )
 
     def get_plot(value):
@@ -75,7 +75,8 @@ def app(
     plot_type = pn.widgets.RadioButtonGroup(
         name="Inspector Type",
         options=list(inspectors.keys()),
-        value=list(inspectors.keys())[0]
+        value=list(inspectors.keys())[0],
+        sizing_mode="stretch_width"
     )
 
     bound_get_widgets = pn.bind(get_widgets, plot_type)
@@ -84,7 +85,7 @@ def app(
     layout = pn.template.MaterialTemplate(
         # site="Panel",
         title="QuartiCal-Visualiser",
-        sidebar=[plot_type, bound_get_widgets],
+        sidebar=[plot_type, pn.WidgetBox(bound_get_widgets)],
         main=[bound_get_plot],
     ).servable()
 

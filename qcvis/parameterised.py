@@ -13,7 +13,7 @@ import panel as pn
 pd.options.mode.copy_on_write = True
 pn.config.throttled = True  # Throttle all sliders.
 
-hv.extension('bokeh', width="stretch_width")
+hv.extension('bokeh', width="stretch_both")
 
 axis_map = {
     "Time": "param_time",
