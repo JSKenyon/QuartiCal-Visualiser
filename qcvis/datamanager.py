@@ -20,8 +20,9 @@ class DataManager(object):
     def __init__(self, path, fields=["gains", "gain_flags"]):
 
         self.path = path
+        self.fields = fields
         # The datasets are lazily evaluated - inexpensive to hold onto them.
-        self.datasets = [xds[fields] for xds in xds_from_zarr(self.path)]
+        self.datasets = [xds[self.fields] for xds in xds_from_zarr(self.path)]
         self.dataset = xarray.combine_by_coords(
             self.datasets,
             combine_attrs="drop_conflicts"
@@ -165,3 +166,10 @@ class DataManager(object):
         )
 
         da.compute(writes)
+
+    def reset(self):
+        self.datasets = [xds[self.fields] for xds in xds_from_zarr(self.path)]
+        self.dataset = xarray.combine_by_coords(
+            self.datasets,
+            combine_attrs="drop_conflicts"
+        ).compute()

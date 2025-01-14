@@ -74,9 +74,17 @@ class ParamInspector(param.Parameterized):
         lambda x: x.param.trigger('flag'),
         label='FLAG'
     )
+    flag = param.Action(
+        lambda x: x.param.trigger('flag'),
+        label='APPLY FLAGS'
+    )
+    reset = param.Action(
+        lambda x: x.param.trigger('reset'),
+        label='RESET FLAGS'
+    )
     save = param.Action(
         lambda x: x.param.trigger('save'),
-        label='SAVE'
+        label='SAVE FLAGS'
     )
 
     _plot_parameters = [
@@ -94,6 +102,7 @@ class ParamInspector(param.Parameterized):
         "flag",
         "flag_mode",
         "flag_axis",
+        "reset",
         "save"
     ]
 
@@ -130,6 +139,7 @@ class ParamInspector(param.Parameterized):
         )
 
         self.param.watch(self.write_flags, ['save'], queued=True)
+        self.param.watch(self.reset_flags, ['reset'], queued=True)
 
         # Automatically update data selection when these fields change.
         self.param.watch(
@@ -175,6 +185,9 @@ class ParamInspector(param.Parameterized):
             self.dm.flag_selection("param_flags", criteria, axes=axes)
 
         # self.dm.get_selection.cache_clear()  # Invalidate cache.
+
+    def reset_flags(self, event):
+        self.dm.reset()
 
     def write_flags(self, event):
         self.dm.write_flags("param_flags")
