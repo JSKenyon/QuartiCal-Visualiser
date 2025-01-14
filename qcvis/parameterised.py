@@ -3,6 +3,7 @@ import pandas as pd
 import hvplot.pandas  # NOQA - required to register hvpot behaviour.
 
 import numpy as np
+from math import prod
 
 import holoviews as hv
 from holoviews import opts, streams
@@ -149,8 +150,10 @@ class ParamInspector(param.Parameterized):
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
 
+        # Get initial selection so we can reason about it.
+        selection = self.dm.get_selection()
         # Start in the appropriate state based on size of selection.
-        self.rasterized = len(self.dm.get_selection()) > self.rasterize_when
+        self.rasterized = prod(selection.sizes.values()) > self.rasterize_when
 
     def update_flags(self, event):
 
