@@ -1,14 +1,12 @@
-import param
 import panel as pn
-from qcvis.datamanager import DataManager
-from qcvis.interface import GainInspector
-from qcvis.parameterised import ParamInspector
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 from typing_extensions import Annotated
+
+from qcvis.gain_inspector import GainInspector
+from qcvis.param_inspector import ParamInspector
 
 
 def main():
@@ -41,13 +39,11 @@ def app(
 
     inspectors = {}
 
-    gain_dm = DataManager(gain_path, fields=["gains", "gain_flags"])
-    gain_inspector = GainInspector(gain_dm)
+    gain_inspector = GainInspector(gain_path, "gains", "gain_flags")
     inspectors["Gains"] = gain_inspector
 
     try:
-        param_dm = DataManager(gain_path, fields=["params", "param_flags"])
-        param_inspector = ParamInspector(param_dm)
+        param_inspector = ParamInspector(gain_path, "params", "param_flags")
         inspectors["Parameters"] = param_inspector
     except KeyError:
         pass
@@ -57,7 +53,7 @@ def app(
 
         # Disable flagging on gains when gain is parameterized.
         if "Parameters" in inspectors and value == "Gains":
-            widgets = pn.Column(widgets[0])
+            widgets = pn.Column(widgets[0], widgets[1])
 
         return widgets
 

@@ -11,41 +11,18 @@ from holoviews import opts, streams
 import param
 import panel as pn
 
+from qcvis.datamanager import DataManager
+
 pd.options.mode.copy_on_write = True
 pn.config.throttled = True  # Throttle all sliders.
 
 hv.extension('bokeh', width="stretch_both")
 
-axis_map = {
-    "Time": "gain_time",
-    "Frequency": "gain_freq",
-    "Amplitude": "amplitude",
-    "Phase": "phase",
-    "Real": "real",
-    "Imaginary": "imaginary"
-}
 
-class GainInspector(param.Parameterized):
+class Inspector(param.Parameterized):
 
-    antenna = param.Selector(
-        label="Antenna",
-    )
-    direction = param.Selector(
-        label="Direction",
-    )
-    correlation = param.Selector(
-        label="Correlation",
-    )
-    x_axis = param.Selector(
-        label="X Axis",
-        objects=list(axis_map.keys()),
-        default="Time"
-    )
-    y_axis = param.Selector(
-        label="Y Axis",
-        objects=list(axis_map.keys()),
-        default="Amplitude"
-    )
+    axis_map = {}  # Specific inspectors hsould provide valid mappings.
+
     rasterized = param.Boolean(
         label="Rasterize",
         default=True
@@ -86,12 +63,12 @@ class GainInspector(param.Parameterized):
         label='SAVE FLAGS'
     )
 
-    _plot_parameters = [
-        "antenna",
-        "direction",
-        "correlation",
+    _selection_parameters = [
         "x_axis",
         "y_axis",
+    ]
+
+    _display_parameters = [
         "rasterized",
         "rasterize_when",
         "pixel_ratio",
@@ -105,44 +82,50 @@ class GainInspector(param.Parameterized):
         "save"
     ]
 
-    def __init__(self, datamanager, **params):
+    def __init__(self, data_path, data_field, flag_field, **params):
 
-        self.dm = datamanager
+        self.dm = DataManager(data_path, fields=[data_field, flag_field])
+        self.data_field = data_field
+        self.flag_field = flag_field
 
-        self.param.antenna.objects = self.dm.get_coord_values("antenna")
-        self.param.antenna.default = self.param.antenna.objects[0]
+        dims = list(self.dm.dataset[self.data_field].dims)
 
-        self.param.direction.objects = self.dm.get_coord_values("direction")
-        self.param.direction.default = self.param.direction.objects[0]
+        for dim in dims:
+            self.param.add_parameter(
+                dim,
+                param.Selector(
+                    label=dim.capitalize(),
+                    objects=self.dm.get_coord_values(dim).tolist()                    
+                )
+            )
 
-        self.param.correlation.objects = self.dm.get_coord_values("correlation")
-        self.param.correlation.default = self.param.correlation.objects[0]
+        for i, ax in enumerate(["x_axis", "y_axis"]):
+            self.param.add_parameter(
+                ax,
+                param.Selector(
+                    label=ax.replace("_", " ").capitalize(),
+                    objects=list(self.axis_map.keys()),
+                    default=list(self.axis_map.keys())[i]                    
+                )
+            )
 
         super().__init__(**params)
 
         # Configure initial selection.
-        self.dm.set_selection(
-            antenna=self.antenna,
-            direction=self.direction,
-            correlation=self.correlation
-        )
+        self.update_selection()
 
-        # Ensure that amplitude is added to data on init.
-        self.dm.set_otf_columns(amplitude="gains")
+        # # Ensure that amplitude is added to data on init. TODO: The plottable
+        # # axes are term dependent i.e. this shouldn't be here.
+        # self.dm.set_otf_columns(amplitude="gains")
 
-        self.param.watch(
-            self.update_flags,
-            ['flag'],
-            queued=True
-        )
-
+        self.param.watch(self.update_flags, ['flag'], queued=True)
         self.param.watch(self.write_flags, ['save'], queued=True)
         self.param.watch(self.reset_flags, ['reset'], queued=True)
 
         # Automatically update data selection when these fields change.
         self.param.watch(
             self.update_selection,
-            ['antenna', 'direction', 'correlation'],
+            dims,
             queued=True
         )
 
@@ -176,32 +159,26 @@ class GainInspector(param.Parameterized):
             criteria = {}
 
             if self.flag_axis in ["SELECTION", "SELECTION (X-AXIS)"]:
-                criteria[axis_map[self.x_axis]] = (x_min, x_max)
+                criteria[self.axis_map[self.x_axis]] = (x_min, x_max)
             if self.flag_axis in ["SELECTION", "SELECTION (Y-AXIS)"]:
-                criteria[axis_map[self.y_axis]] = (y_min, y_max)
+                criteria[self.axis_map[self.y_axis]] = (y_min, y_max)
 
-            self.dm.flag_selection("gain_flags", criteria, axes=axes)
+            self.dm.flag_selection(self.flag_field, criteria, axes=axes)
 
-        # self.dm.get_selection.cache_clear()  # Invalidate cache.
-
-    def reset_flags(self, event):
+    def reset_flags(self, event=None):
         self.dm.reset()
 
-    def write_flags(self, event):
-        self.dm.write_flags("gain_flags")
+    def write_flags(self, event=None):
+        self.dm.write_flags(self.flag_field)
 
-    def update_selection(self, event):
-        self.dm.set_selection(
-            antenna=self.antenna,
-            direction=self.direction,
-            correlation=self.correlation
-        )
+    def update_selection(self, event=None):
+        return NotImplementedError(f"update_selection not yet implemented.")
 
-    def update_otf_columns(self, event):
+    def update_otf_columns(self, event=None):
         self.dm.set_otf_columns(
             **{
-                axis_map[ax]: "gains" for ax in self.current_axes
-                if axis_map[ax] in self.dm.otf_column_map
+                self.axis_map[ax]: self.data_field for ax in self.current_axes
+                if self.axis_map[ax] in self.dm.otf_column_map
             }
         )
 
@@ -214,13 +191,15 @@ class GainInspector(param.Parameterized):
         pn.state.log(f'Plot update triggered.')
 
         plot_data = self.dm.get_plot_data(
-            axis_map[self.x_axis],
-            axis_map[self.y_axis]
+            self.axis_map[self.x_axis],
+            self.axis_map[self.y_axis],
+            self.data_field,
+            self.flag_field
         )
 
         plot = self.rectangles * plot_data.hvplot.scatter(
-            x=axis_map[self.x_axis],
-            y=axis_map[self.y_axis],
+            x=self.axis_map[self.x_axis],
+            y=self.axis_map[self.y_axis],
             rasterize=self.rasterized,
             # dynspread=True,
             resample_when=self.rasterize_when if self.rasterized else None,
@@ -246,9 +225,16 @@ class GainInspector(param.Parameterized):
         for k in self.param.objects().keys():
             widget_opts[k] = {"sizing_mode": "stretch_width"}
 
-        default_widgets = pn.Param(
+        display_widgets = pn.Param(
             self.param,
-            parameters=self._plot_parameters,
+            parameters=self._display_parameters,
+            name="DISPLAY",
+            widgets=widget_opts
+        )
+
+        selection_widgets = pn.Param(
+            self.param,
+            parameters=self._selection_parameters,
             name="SELECTION",
             widgets=widget_opts
         )
@@ -277,6 +263,7 @@ class GainInspector(param.Parameterized):
         )
 
         return pn.Column(
-            pn.WidgetBox(default_widgets),
+            pn.WidgetBox(display_widgets),
+            pn.WidgetBox(selection_widgets),
             pn.WidgetBox(flagging_widgets)
         )
