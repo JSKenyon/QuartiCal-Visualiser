@@ -158,6 +158,7 @@ class ParamInspector(param.Parameterized):
             return
 
         corners = self.box_edit.data
+        axes = ["antenna"] if self.flag_mode == "ALL ANTENNAS" else []
 
         for x_min, y_min, x_max, y_max in zip(*corners.values()):
 
@@ -168,7 +169,7 @@ class ParamInspector(param.Parameterized):
             if self.flag_axis in ["SELECTION", "SELECTION (Y-AXIS)"]:
                 criteria[axis_map[self.y_axis]] = (y_min, y_max)
 
-            self.dm.flag_selection("param_flags", criteria)
+            self.dm.flag_selection("param_flags", criteria, axes=axes)
 
         # self.dm.get_selection.cache_clear()  # Invalidate cache.
 
