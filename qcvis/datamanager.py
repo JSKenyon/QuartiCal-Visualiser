@@ -168,7 +168,6 @@ class DataManager(object):
         da.compute(writes)
 
     def reset(self):
-        self.datasets = [xds[self.fields] for xds in xds_from_zarr(self.path)]
         self.dataset = xarray.combine_by_coords(
             self.datasets,
             combine_attrs="drop_conflicts"
