@@ -161,10 +161,12 @@ class ParamInspector(param.Parameterized):
 
         for x_min, y_min, x_max, y_max in zip(*corners.values()):
 
-            criteria = {
-                axis_map[self.x_axis]: (x_min, x_max),
-                axis_map[self.y_axis]: (y_min, y_max)
-            }
+            criteria = {}
+
+            if self.flag_axis in ["SELECTION", "SELECTION (X-AXIS)"]:
+                criteria[axis_map[self.x_axis]] = (x_min, x_max)
+            if self.flag_axis in ["SELECTION", "SELECTION (Y-AXIS)"]:
+                criteria[axis_map[self.y_axis]] = (y_min, y_max)
 
             self.dm.flag_selection("param_flags", criteria)
 
