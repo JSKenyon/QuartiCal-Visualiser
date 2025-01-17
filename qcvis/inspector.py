@@ -7,6 +7,7 @@ from math import prod
 
 import holoviews as hv
 from holoviews import opts, streams
+from holoviews.operation.datashader import datashade
 
 import param
 import panel as pn
@@ -137,9 +138,11 @@ class Inspector(param.Parameterized):
         )
 
         # Empty Rectangles for overlay
-        self.rectangles = hv.Rectangles([])
+        self.rectangles = hv.Rectangles([]).opts(alpha=0.2, color="red")
         # Attach a BoxEdit stream to the Rectangles
         self.box_edit = streams.BoxEdit(source=self.rectangles)
+
+        self.zoom = streams.RangeXY()
 
         # Get initial selection so we can reason about it.
         selection = self.dm.get_selection()
@@ -197,25 +200,42 @@ class Inspector(param.Parameterized):
             self.flag_field
         )
 
-        plot = self.rectangles * plot_data.hvplot.scatter(
-            x=self.axis_map[self.x_axis],
-            y=self.axis_map[self.y_axis],
-            rasterize=self.rasterized,
-            # dynspread=True,
-            resample_when=self.rasterize_when if self.rasterized else None,
-            hover=False,
+        scatter = hv.Scatter(plot_data)
+        self.zoom.source = scatter
+
+        zoomed_scatter = scatter.apply(filter_points, streams=[self.zoom])
+
+        point_scatter = zoomed_scatter.apply(hover_points, threshold=self.rasterize_when)
+
+        shaded_plot = datashade(
+            zoomed_scatter,
+            streams=[self.zoom],
+            pixel_ratio=self.pixel_ratio
+        ).opts(
             responsive=True,
-            # logz=True,
-            # x_sampling=self.minimum_sampling.get(self.x_axis, None),
-            # y_sampling=self.minimum_sampling.get(self.y_axis, None),
-            pixel_ratio=self.pixel_ratio,
             xlabel=self.x_axis,
             ylabel=self.y_axis
         )
 
+        # plot = self.rectangles * plot_data.hvplot.scatter(
+        #     x=self.axis_map[self.x_axis],
+        #     y=self.axis_map[self.y_axis],
+        #     rasterize=self.rasterized,
+        #     # dynspread=True,
+        #     resample_when=self.rasterize_when if self.rasterized else None,
+        #     hover=False,
+        #     responsive=True,
+        #     # logz=True,
+        #     # x_sampling=self.minimum_sampling.get(self.x_axis, None),
+        #     # y_sampling=self.minimum_sampling.get(self.y_axis, None),
+        #     pixel_ratio=self.pixel_ratio,
+        #     xlabel=self.x_axis,
+        #     ylabel=self.y_axis
+        # )
+
         pn.state.log(f'Plot update completed.')
 
-        return plot
+        return shaded_plot * point_scatter * self.rectangles
     
     @property
     def widgets(self):
@@ -267,3 +287,13 @@ class Inspector(param.Parameterized):
             pn.WidgetBox(selection_widgets),
             pn.WidgetBox(flagging_widgets)
         )
+    
+def filter_points(points, x_range, y_range):
+    if x_range is None or y_range is None:
+        return points
+    return points[x_range, y_range]
+
+def hover_points(points, threshold=5000):
+    if len(points) > threshold:
+        return points.iloc[:0]
+    return points
