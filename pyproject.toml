@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qcvisualiser"
-version = "0.0.2"
+version = "0.0.3"
 description = "Visualiser for QuartiCal gain solutions."
 repository = "https://github.com/JSKenyon/QuartiCal-Visualiser"
 # documentation = "https://quartical.readthedocs.io"
