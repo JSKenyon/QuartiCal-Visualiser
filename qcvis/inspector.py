@@ -202,28 +202,27 @@ class Inspector(param.Parameterized):
 
         pn.state.log(f'Plot update triggered.')
 
-        x_name = self.axis_map[self.x_axis]
-        y_name = self.axis_map[self.y_axis]
+        x_axis = self.axis_map[self.x_axis]
+        y_axis = self.axis_map[self.y_axis]
 
         plot_data = self.dm.get_plot_data(
-            x_name,
-            y_name,
+            x_axis,
+            y_axis,
             self.data_field,
             self.flag_field
         )
 
-        x_limits = (plot_data[x_name].min(), plot_data[x_name].max())
-        y_limits = (plot_data[y_name].min(), plot_data[y_name].max())
+        n_points = len(plot_data)
+
+        x_limits = (plot_data[x_axis].min(), plot_data[x_axis].max())
+        y_limits = (plot_data[y_axis].min(), plot_data[y_axis].max())
 
         scatter = hv.Scatter(
             plot_data,
-            kdims=[self.axis_map[self.x_axis]],
-            vdims=[self.axis_map[self.y_axis]]
+            kdims=[x_axis],
+            vdims=[y_axis]
         )
         self.zoom.source = scatter
-
-        # Set inital zoom to plot limits.
-        self.zoom.update(x_range=x_limits, y_range=y_limits)
 
         # Get the points which fall in the current window.
         visible_points = scatter.apply(filter_points, streams=[self.zoom])
@@ -232,13 +231,16 @@ class Inspector(param.Parameterized):
         # selection if we are below the threshold.
         datashade_points = visible_points.apply(
             threshold_points,
-            threshold=self.rasterize_when
+            threshold=self.rasterize_when if self.rasterized else n_points
         )
         raw_points = visible_points.apply(
             threshold_points,
-            threshold=self.rasterize_when,
+            threshold=self.rasterize_when if self.rasterized else n_points + 1,
             inverse=True
         )
+
+        # Set inital zoom to plot limits.
+        self.zoom.update(x_range=x_limits, y_range=y_limits)
 
         shaded_plot = datashade(
             datashade_points,
@@ -248,13 +250,21 @@ class Inspector(param.Parameterized):
             responsive=True,
             xlabel=self.x_axis,
             ylabel=self.y_axis,
-            xlim=x_limits,
-            ylim=y_limits
+            # xlim=x_limits,
+            # ylim=y_limits
+        )
+
+        raw_plot = raw_points.opts(
+            responsive=True,
+            xlabel=self.x_axis,
+            ylabel=self.y_axis,
+            # xlim=x_limits,
+            # ylim=y_limits
         )
 
         pn.state.log(f'Plot update completed.')
 
-        return shaded_plot * raw_points * self.rectangles
+        return shaded_plot * raw_plot * self.rectangles
 
     @property
     def widgets(self):
