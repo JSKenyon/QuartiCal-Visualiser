@@ -1,4 +1,4 @@
-from qcvis.inspector import Inspector
+from qcvisualiser.inspector import Inspector
 
 
 class ParamInspector(Inspector):
