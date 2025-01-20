@@ -1,9 +1,9 @@
 [tool.poetry]
-name = "qcvis"
+name = "qcvisualiser"
 version = "0.0.0"
 description = "Visualiser for QuartiCal gain solutions."
 repository = "https://github.com/JSKenyon/QuartiCal-Visualiser"
-documentation = "https://quartical.readthedocs.io"
+# documentation = "https://quartical.readthedocs.io"
 authors = ["Jonathan Kenyon <jonathan.simon.kenyon@gmail.com>"]
 license = "MIT"
 readme = "README.md"
@@ -30,7 +30,7 @@ datashader = ">=0.16.3"
 dask = {extras = ["dataframe"], version = ">=2024.10.0"}
 
 [tool.poetry.scripts]
-govisualise = 'qcvis.main:main'
+govisualise = 'qcvisualiser.main:main'
 
 [build-system]
 requires = ["poetry-core"]

@@ -12,8 +12,8 @@ from holoviews.operation.datashader import datashade
 import param
 import panel as pn
 
-from qcvis.datamanager import DataManager
-from qcvis.plot_utils import filter_points, threshold_points
+from qcvisualiser.datamanager import DataManager
+from qcvisualiser.plot_utils import filter_points, threshold_points
 
 pd.options.mode.copy_on_write = True
 pn.config.throttled = True  # Throttle all sliders.

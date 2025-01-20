@@ -1,33 +1,30 @@
-from qcvis.inspector import Inspector
+from qcvisualiser.inspector import Inspector
 
 
-class GainInspector(Inspector):
+class ParamInspector(Inspector):
 
     # The plot x and y axes will default to the first two elements.
     axis_map = {
-        "Time": "gain_time",
-        "Amplitude": "amplitude",
-        "Frequency": "gain_freq",
-        "Phase": "phase",
-        "Real": "real",
-        "Imaginary": "imaginary"
+        "Time": "param_time",
+        "Parameter": "params",
+        "Frequency": "param_freq"
     }
 
     _selection_parameters = (
         Inspector._selection_parameters + 
-        ["antenna", "direction", "correlation"]
+        ["antenna", "direction", "param_name"]
     )
 
     def __init__(self, data_path, data_field, flag_field, **params):
 
         super().__init__(data_path, data_field, flag_field, **params)
 
-        # Ensure that amplitude is added to data on init.
-        self.dm.set_otf_columns(amplitude=self.data_field)
+        # Update "param_name" to "Parameter Name" for cosmetic consistency.
+        self.param.param_name.label = "Paramater Name"
 
     def update_selection(self, event=None):
         self.dm.set_selection(
             antenna=self.antenna,
             direction=self.direction,
-            correlation=self.correlation
+            param_name=self.param_name
         )

@@ -5,8 +5,8 @@ from pathlib import Path
 import typer
 from typing_extensions import Annotated
 
-from qcvis.gain_inspector import GainInspector
-from qcvis.param_inspector import ParamInspector
+from qcvisualiser.gain_inspector import GainInspector
+from qcvisualiser.param_inspector import ParamInspector
 
 
 def main():
