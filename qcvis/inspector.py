@@ -13,6 +13,7 @@ import param
 import panel as pn
 
 from qcvis.datamanager import DataManager
+from qcvis.plot_utils import filter_points, threshold_points
 
 pd.options.mode.copy_on_write = True
 pn.config.throttled = True  # Throttle all sliders.
@@ -30,7 +31,7 @@ datashade._postprocess_hooks = [no_data_white_background]
 
 class Inspector(param.Parameterized):
 
-    axis_map = {}  # Specific inspectors hsould provide valid mappings.
+    axis_map = {}  # Specific inspectors should provide valid mappings.
 
     rasterized = param.Boolean(
         label="Rasterize",
@@ -201,15 +202,28 @@ class Inspector(param.Parameterized):
 
         pn.state.log(f'Plot update triggered.')
 
+        x_name = self.axis_map[self.x_axis]
+        y_name = self.axis_map[self.y_axis]
+
         plot_data = self.dm.get_plot_data(
-            self.axis_map[self.x_axis],
-            self.axis_map[self.y_axis],
+            x_name,
+            y_name,
             self.data_field,
             self.flag_field
         )
 
-        scatter = hv.Scatter(plot_data)
+        x_limits = (plot_data[x_name].min(), plot_data[x_name].max())
+        y_limits = (plot_data[y_name].min(), plot_data[y_name].max())
+
+        scatter = hv.Scatter(
+            plot_data,
+            kdims=[self.axis_map[self.x_axis]],
+            vdims=[self.axis_map[self.y_axis]]
+        )
         self.zoom.source = scatter
+
+        # Set inital zoom to plot limits.
+        self.zoom.update(x_range=x_limits, y_range=y_limits)
 
         # Get the points which fall in the current window.
         visible_points = scatter.apply(filter_points, streams=[self.zoom])
@@ -217,12 +231,13 @@ class Inspector(param.Parameterized):
         # Get the points which we want to datashade - this may be an empty
         # selection if we are below the threshold.
         datashade_points = visible_points.apply(
-            get_datashade_points,
+            threshold_points,
             threshold=self.rasterize_when
         )
         raw_points = visible_points.apply(
-            get_raw_points,
-            threshold=self.rasterize_when
+            threshold_points,
+            threshold=self.rasterize_when,
+            inverse=True
         )
 
         shaded_plot = datashade(
@@ -232,7 +247,9 @@ class Inspector(param.Parameterized):
         ).opts(
             responsive=True,
             xlabel=self.x_axis,
-            ylabel=self.y_axis
+            ylabel=self.y_axis,
+            xlim=x_limits,
+            ylim=y_limits
         )
 
         pn.state.log(f'Plot update completed.')
@@ -289,22 +306,3 @@ class Inspector(param.Parameterized):
             pn.WidgetBox(selection_widgets),
             pn.WidgetBox(flagging_widgets)
         )
-
-def filter_points(points, x_range, y_range):
-    if x_range is None or y_range is None:
-        return points
-    if np.isnan(x_range + y_range).any():
-        return points
-    return points[x_range, y_range]
-
-def get_datashade_points(points, threshold=50000):
-    if len(points) > threshold:
-        return points
-    else:
-        return points.iloc[:0]
-
-def get_raw_points(points, threshold=50000):
-    if len(points) < threshold:
-        return points
-    else:
-        return points.iloc[:0]
