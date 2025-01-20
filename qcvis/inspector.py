@@ -6,7 +6,7 @@ import numpy as np
 from math import prod
 
 import holoviews as hv
-from holoviews import opts, streams
+from holoviews import streams
 from holoviews.operation.datashader import datashade
 
 import param
@@ -19,6 +19,14 @@ pn.config.throttled = True  # Throttle all sliders.
 
 hv.extension('bokeh', width="stretch_both")
 
+# NOTE: This is a work around for a bug in datashader. See
+# https://github.com/holoviz/holoviews/issues/6493#issuecomment-2598559976.
+def no_data_white_background(plot, element):
+    if np.unique(element.rgb.data.values.view(np.uint32)).size == 1:
+        element.rgb.data.values = np.zeros_like(element.rgb.data.values)
+    return element
+
+datashade._postprocess_hooks = [no_data_white_background]
 
 class Inspector(param.Parameterized):
 
@@ -96,7 +104,7 @@ class Inspector(param.Parameterized):
                 dim,
                 param.Selector(
                     label=dim.capitalize(),
-                    objects=self.dm.get_coord_values(dim).tolist()                    
+                    objects=self.dm.get_coord_values(dim).tolist()
                 )
             )
 
@@ -106,7 +114,7 @@ class Inspector(param.Parameterized):
                 param.Selector(
                     label=ax.replace("_", " ").capitalize(),
                     objects=list(self.axis_map.keys()),
-                    default=list(self.axis_map.keys())[i]                    
+                    default=list(self.axis_map.keys())[i]
                 )
             )
 
@@ -203,12 +211,22 @@ class Inspector(param.Parameterized):
         scatter = hv.Scatter(plot_data)
         self.zoom.source = scatter
 
-        zoomed_scatter = scatter.apply(filter_points, streams=[self.zoom])
+        # Get the points which fall in the current window.
+        visible_points = scatter.apply(filter_points, streams=[self.zoom])
 
-        point_scatter = zoomed_scatter.apply(hover_points, threshold=self.rasterize_when)
+        # Get the points which we want to datashade - this may be an empty
+        # selection if we are below the threshold.
+        datashade_points = visible_points.apply(
+            get_datashade_points,
+            threshold=self.rasterize_when
+        )
+        raw_points = visible_points.apply(
+            get_raw_points,
+            threshold=self.rasterize_when
+        )
 
         shaded_plot = datashade(
-            zoomed_scatter,
+            datashade_points,
             streams=[self.zoom],
             pixel_ratio=self.pixel_ratio
         ).opts(
@@ -217,26 +235,10 @@ class Inspector(param.Parameterized):
             ylabel=self.y_axis
         )
 
-        # plot = self.rectangles * plot_data.hvplot.scatter(
-        #     x=self.axis_map[self.x_axis],
-        #     y=self.axis_map[self.y_axis],
-        #     rasterize=self.rasterized,
-        #     # dynspread=True,
-        #     resample_when=self.rasterize_when if self.rasterized else None,
-        #     hover=False,
-        #     responsive=True,
-        #     # logz=True,
-        #     # x_sampling=self.minimum_sampling.get(self.x_axis, None),
-        #     # y_sampling=self.minimum_sampling.get(self.y_axis, None),
-        #     pixel_ratio=self.pixel_ratio,
-        #     xlabel=self.x_axis,
-        #     ylabel=self.y_axis
-        # )
-
         pn.state.log(f'Plot update completed.')
 
-        return shaded_plot * point_scatter * self.rectangles
-    
+        return shaded_plot * raw_points * self.rectangles
+
     @property
     def widgets(self):
 
@@ -287,13 +289,22 @@ class Inspector(param.Parameterized):
             pn.WidgetBox(selection_widgets),
             pn.WidgetBox(flagging_widgets)
         )
-    
+
 def filter_points(points, x_range, y_range):
     if x_range is None or y_range is None:
         return points
+    if np.isnan(x_range + y_range).any():
+        return points
     return points[x_range, y_range]
 
-def hover_points(points, threshold=5000):
+def get_datashade_points(points, threshold=50000):
     if len(points) > threshold:
+        return points
+    else:
         return points.iloc[:0]
-    return points
+
+def get_raw_points(points, threshold=50000):
+    if len(points) < threshold:
+        return points
+    else:
+        return points.iloc[:0]
