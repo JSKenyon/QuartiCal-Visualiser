@@ -235,7 +235,7 @@ class Inspector(param.Parameterized):
         )
         raw_points = visible_points.apply(
             threshold_points,
-            threshold=self.rasterize_when if self.rasterized else n_points + 1,
+            threshold=self.rasterize_when if self.rasterized else n_points,
             inverse=True
         )
 
@@ -250,21 +250,13 @@ class Inspector(param.Parameterized):
             responsive=True,
             xlabel=self.x_axis,
             ylabel=self.y_axis,
-            # xlim=x_limits,
-            # ylim=y_limits
-        )
-
-        raw_plot = raw_points.opts(
-            responsive=True,
-            xlabel=self.x_axis,
-            ylabel=self.y_axis,
-            # xlim=x_limits,
-            # ylim=y_limits
+            xlim=x_limits,
+            ylim=y_limits
         )
 
         pn.state.log(f'Plot update completed.')
 
-        return shaded_plot * raw_plot * self.rectangles
+        return shaded_plot * raw_points * self.rectangles
 
     @property
     def widgets(self):
