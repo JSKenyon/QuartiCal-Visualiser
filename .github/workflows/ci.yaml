@@ -22,12 +22,12 @@ jobs:
 
     steps:
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@v2
+        uses: abatilo/actions-poetry@v4
         with:
           poetry-version: ${{ env.POETRY_VERSION }}
 
@@ -52,7 +52,7 @@ jobs:
 
       - name: Load cached CASA Measures Data
         id: load-cached-casa-measures
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           key: casa-measures-${{ hashFiles('measures_dir.txt')}}
           path: |
@@ -81,12 +81,12 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     steps:
       - name: Set up Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@v2
+        uses: abatilo/actions-poetry@v4
         with:
           poetry-version: ${{ env.POETRY_VERSION }}
 
@@ -102,7 +102,7 @@ jobs:
         run: poetry build
 
       - name: Publish distribution to Test PyPI
-        uses: pypa/gh-action-pypi-publish@v1.8.6
+        uses: pypa/gh-action-pypi-publish@v1.12.3
         with:
           user: __token__
           password: ${{ secrets.TEST_PYPI }}
@@ -110,7 +110,7 @@ jobs:
         continue-on-error: true
 
       - name: Publish distribution to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.8.6
+        uses: pypa/gh-action-pypi-publish@v1.12.3
         with:
           user: __token__
           password: ${{ secrets.PYPI }}
@@ -123,4 +123,4 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Release
-        uses: softprops/action-gh-release@v0.1.15
+        uses: softprops/action-gh-release@v2.2.1
