@@ -6,7 +6,7 @@ import pandas as pd
 from daskms.experimental.zarr import xds_from_zarr, xds_to_zarr
 from cachetools import cached, LRUCache
 from cachetools.keys import hashkey
-
+from astropy.time import Time
 
 class DataManager(object):
 
@@ -16,6 +16,12 @@ class DataManager(object):
         "real": np.real,
         "imaginary": np.imag
     }
+
+    time_coords = {
+        "gain_time",
+        "param_time"
+    }
+
 
     def __init__(self, path, fields=["gains", "gain_flags"]):
 
@@ -27,6 +33,21 @@ class DataManager(object):
             self.datasets,
             combine_attrs="drop_conflicts"
         ).compute()
+
+        for time_coord in self.time_coords:
+            try:
+                apy_time = Time(
+                    self.dataset[time_coord].values/(24*60*60), format="mjd"
+                )
+                self.dataset = self.dataset.assign_coords(
+                    {
+                        time_coord: (
+                            self.dataset[time_coord].dims, apy_time.datetime
+                        )
+                    }
+                )
+            except KeyError:
+                pass
 
         # Initialise data selection - defaults to all data.
         self.selector = tuple([slice(None) for _ in self.dataset.dims])
@@ -83,7 +104,7 @@ class DataManager(object):
             )
 
         return selection
-    
+
     def get_plot_data(
         self,
         x_axis,

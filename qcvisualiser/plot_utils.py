@@ -4,8 +4,9 @@ from operator import le, gt
 def filter_points(points, x_range, y_range, eps=1e-6):
     if x_range is None or y_range is None:
         return points
-    if np.isnan(x_range + y_range).any():
-        return points
+
+    # if np.isnan(x_range + y_range).any():
+    #     return points
     # NOTE: This attempts to avoid a weird edge case where all points have the
     # same value. This causes in equal limits on the range which results in
     # no points being selected for plotting.

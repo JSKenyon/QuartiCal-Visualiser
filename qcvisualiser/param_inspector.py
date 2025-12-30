@@ -1,6 +1,5 @@
 from qcvisualiser.inspector import Inspector
 
-
 class ParamInspector(Inspector):
 
     # The plot x and y axes will default to the first two elements.
@@ -11,7 +10,7 @@ class ParamInspector(Inspector):
     }
 
     _selection_parameters = (
-        Inspector._selection_parameters + 
+        Inspector._selection_parameters +
         ["antenna", "direction", "param_name"]
     )
 
